@@ -1,4 +1,4 @@
-# Footyhead para dos hermanos
+# Footyhead
 
 Adaptación de [azaidi4/footyhead](https://github.com/azaidi4/footyhead). Conserva sus gráficos y se juega sin Flash, desde una computadora.
 
