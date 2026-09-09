@@ -4,6 +4,22 @@ import { DatabaseSync } from "node:sqlite";
 import { readFileSync, readdirSync } from "node:fs";
 import worker from "../worker/index";
 
+test("un enlace directo de sala conserva su URL y no redirige al inicio", async () => {
+  const assets = {
+    async fetch(request: Request) {
+      const path = new URL(request.url).pathname;
+      if (path === "/index.html") return Response.redirect("https://game.test/", 307);
+      return new Response(path === "/" ? "<html>Juego</html>" : "Not found", { status: path === "/" ? 200 : 404 });
+    },
+  };
+  for (const path of ["/play", "/play/ABC123"]) {
+    const response = await worker.fetch(new Request(`https://game.test${path}`), { ASSETS: assets as any, DB: {} as any });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("location"), null);
+    assert.match(await response.text(), /Juego/);
+  }
+});
+
 test("sala real en SQLite: roles, tercero rechazado, señal privada y vencimiento", async () => {
   const sql = new DatabaseSync(":memory:");
   for (const file of readdirSync("drizzle").filter(name => name.endsWith(".sql"))) sql.exec(readFileSync(`drizzle/${file}`, "utf8"));

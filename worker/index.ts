@@ -10,7 +10,9 @@ export default {
       const response = await env.ASSETS.fetch(request);
       if (response.status !== 404) return response;
       if (request.method === "GET" && (url.pathname === "/play" || /^\/play\/[A-Z0-9-]+$/i.test(url.pathname))) {
-        return env.ASSETS.fetch(new Request(new URL("/index.html", url), request));
+        // Pedir / evita que el alojamiento canonice index.html con una redirección
+        // que borraría /play/CODIGO de la barra del navegador.
+        return env.ASSETS.fetch(new Request(new URL("/", url), request));
       }
       return response;
     }
