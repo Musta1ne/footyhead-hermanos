@@ -18,7 +18,7 @@ const phasermsg = () => {
 };
 
 export default defineConfig({
-  base: "./",
+  base: "/",
   plugins: [react(), phasermsg()],
   logLevel: "warning",
   build: {
@@ -41,4 +41,3 @@ export default defineConfig({
     },
   },
 });
-
