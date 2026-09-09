@@ -67,3 +67,46 @@ test("no acepta entradas malformadas que puedan corromper la física", () => {
   assert.equal(isInput({ ...emptyInput(), seq: NaN }), false);
   assert.equal(isInput(emptyInput()), true);
 });
+
+test("jugadores y pelota siguen chocando con el piso después de varios goles", () => {
+  const sim = new Simulation();
+  try {
+    const input = emptyInput();
+    for (let i = 0; i < 60; i++) sim.step(input, input);
+    for (let goal = 0; goal < 4; goal++) {
+      Matter.Body.setPosition(sim.ball, { x: goal % 2 ? 984 : 40, y: 530 });
+      Matter.Body.setVelocity(sim.ball, { x: 0, y: 0 });
+      sim.step(input, input);
+      assert.equal(sim.round, goal + 1);
+      for (let i = 0; i < RULES.goalPauseTicks; i++) sim.step(input, input);
+      assert.equal(sim.pause, 0);
+      // Caída vertical lejos de los arcos para comprobar el piso sin otro gol.
+      Matter.Body.setVelocity(sim.ball, { x: 0, y: 0 });
+      for (let i = 0; i < 180; i++) {
+        sim.step(input, input);
+        for (const body of [...sim.players, sim.ball]) {
+          assert.ok(body.position.y < 600, `cuerpo atravesó el piso después del gol ${goal + 1}`);
+        }
+      }
+      assert.equal(sim.round, goal + 1);
+    }
+    assert.deepEqual(sim.score, [2, 2]);
+  } finally { sim.destroy(); }
+});
+
+test("el invitado conserva colisiones al restaurar estados después de haber simulado", () => {
+  const host = new Simulation(), guest = new Simulation();
+  try {
+    const input = emptyInput();
+    for (let i = 0; i < 60; i++) { host.step(input, input); guest.step(input, input); }
+    Matter.Body.setPosition(host.ball, { x: 512, y: 575 });
+    Matter.Body.setVelocity(host.ball, { x: 0, y: 4 });
+    for (let i = 0; i < 90; i++) {
+      guest.restore(host.snapshot());
+      host.step(input, input); guest.step(input, input);
+      for (const body of [...guest.players, guest.ball]) assert.ok(body.position.y < 600);
+      assert.ok(Math.abs(host.ball.position.y - guest.ball.position.y) < 0.5);
+      assert.ok(Math.abs(host.players[0].position.y - guest.players[0].position.y) < 0.5);
+    }
+  } finally { host.destroy(); guest.destroy(); }
+});
