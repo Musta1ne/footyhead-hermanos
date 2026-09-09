@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { RTCPeerConnection } from "werift";
 import { Peer } from "../client/src/game/peer";
+import { Simulation, emptyInput, type Snapshot } from "../client/src/game/simulation";
 
 test("dos Peer reales abren ambos canales y juegan aunque se apague la señalización", { timeout: 30_000 }, async (t) => {
   const savedFetch = globalThis.fetch;
@@ -56,6 +57,35 @@ test("dos Peer reales abren ambos canales y juegan aunque se apague la señaliza
     const pause = new Promise<unknown>(resolve => { host.onMessage = resolve; });
     guest.send({ type: "visibility", hidden: true }, true);
     assert.deepEqual(await pause, { type: "visibility", hidden: true });
+    const hostSim = new Simulation(), guestSim = new Simulation();
+    try {
+      for (let match = 0; match < 2; match++) {
+        hostSim.remainingTicks = 1;
+        hostSim.score = [match + 1, 0];
+        hostSim.step(emptyInput(), emptyInput());
+        const ended = new Promise<void>(resolve => {
+          guest.onMessage = message => { guestSim.restore(message.state as Snapshot); resolve(); };
+        });
+        host.send({ type: "state", state: hostSim.snapshot() }, true);
+        await ended;
+        assert.equal(guestSim.finished, true);
+        assert.equal(guestSim.winner, 1);
+        hostSim.requestRematch(1, match);
+        const restarted = new Promise<void>(resolve => {
+          host.onMessage = message => {
+            if (message.type === "rematch" && hostSim.requestRematch(2, message.match as number)) {
+              host.send({ type: "state", state: hostSim.snapshot() }, true);
+            }
+          };
+          guest.onMessage = message => { guestSim.restore(message.state as Snapshot); resolve(); };
+        });
+        guest.send({ type: "rematch", match }, true);
+        await restarted;
+        assert.equal(guestSim.match, match + 1);
+        assert.deepEqual(guestSim.score, [0, 0]);
+        assert.deepEqual(guestSim.snapshot(), hostSim.snapshot());
+      }
+    } finally { hostSim.destroy(); guestSim.destroy(); }
     await new Promise(resolve => setTimeout(resolve, 2200));
     assert.ok(host.rtt > 0 && guest.rtt > 0);
     assert.equal(signalingCalls, callsAtStart);
