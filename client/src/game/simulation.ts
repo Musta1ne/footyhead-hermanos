@@ -5,6 +5,7 @@ export const RULES = {
   stepMs: 1000 / 60, speed: 4, jump: -6, kickX: 7, kickY: -8,
   kickReach: 75, kickCooldownTicks: 18, goalPauseTicks: 45,
   inputTimeoutMs: 750, snapshotEveryTicks: 2,
+  matchTicks: 60 * 60,
 };
 export type Team = 1 | 2;
 export type Input = { seq: number; direction: -1 | 0 | 1; jump: number; kick: number };
@@ -12,6 +13,7 @@ export const emptyInput = (): Input => ({ seq: 0, direction: 0, jump: 0, kick: 0
 export type BodyState = { x: number; y: number; vx: number; vy: number; angle: number; spin: number };
 export type Snapshot = {
   tick: number; round: number; pause: number; score: [number, number];
+  match: number; remainingTicks: number; ready: [boolean, boolean];
   players: [BodyState, BodyState]; ball: BodyState;
   inputs: [Input, Input]; kicks: [number, number];
 };
@@ -22,6 +24,30 @@ export class Simulation {
   players = [200, 824].map(x => Bodies.circle(x, 550, 22, { mass: 20, restitution: 0.3, inertia: Infinity }));
   ball = Bodies.circle(512, 400, 10, { mass: 3, restitution: 1, friction: 0.05, frictionAir: 0.005 });
   tick = 0;
+  match = 0;
+  remainingTicks = RULES.matchTicks;
+  ready: [boolean, boolean] = [false, false];
+  get finished() { return this.remainingTicks === 0; }
+  get winner(): Team | null {
+    return !this.finished || this.score[0] === this.score[1] ? null : this.score[0] > this.score[1] ? 1 : 2;
+  }
+
+  requestRematch(team: Team, match: number) {
+    if (!this.finished || match !== this.match || this.ready[team - 1]) return false;
+    this.ready[team - 1] = true;
+    // El tick global también ordena estados enviados por canales diferentes.
+    this.tick++;
+    if (this.ready.every(Boolean)) {
+      this.match++;
+      this.remainingTicks = RULES.matchTicks;
+      this.ready = [false, false];
+      this.score = [0, 0]; this.round = 0; this.pause = 0;
+      this.inputs = this.inputs.map(input => ({ ...input, direction: 0 })) as [Input, Input];
+      this.kicks = [-100, -100];
+      this.serve();
+    }
+    return true;
+  }
   round = 0;
   pause = 0;
   score: [number, number] = [0, 0];
@@ -55,7 +81,9 @@ export class Simulation {
   }
 
   step(one: Input, two: Input) {
+    if (this.finished) return;
     this.tick++;
+    this.remainingTicks--;
     const next = [one, two];
     if (this.pause > 0) {
       this.inputs = [{ ...one }, { ...two }];
@@ -89,6 +117,7 @@ export class Simulation {
   snapshot(): Snapshot {
     const body = (b: Matter.Body): BodyState => ({ x: b.position.x, y: b.position.y, vx: b.velocity.x, vy: b.velocity.y, angle: b.angle, spin: b.angularVelocity });
     return { tick: this.tick, round: this.round, pause: this.pause, score: [...this.score],
+      match: this.match, remainingTicks: this.remainingTicks, ready: [...this.ready],
       players: [body(this.players[0]), body(this.players[1])], ball: body(this.ball),
       inputs: [{ ...this.inputs[0] }, { ...this.inputs[1] }], kicks: [...this.kicks] };
   }
@@ -101,6 +130,7 @@ export class Simulation {
       Body.setAngularVelocity(b, s.spin);
     };
     this.tick = state.tick; this.round = state.round; this.pause = state.pause;
+    this.match = state.match; this.remainingTicks = state.remainingTicks; this.ready = [...state.ready];
     this.score = [...state.score]; this.inputs = state.inputs.map(i => ({ ...i })) as [Input, Input];
     this.kicks = [...state.kicks];
     this.players.forEach((p, i) => body(p, state.players[i])); body(this.ball, state.ball);
