@@ -51,7 +51,7 @@ export class Simulation {
     Body.setVelocity(this.ball, { x: this.round % 2 ? -4 : 4, y: -3 });
     Body.setAngularVelocity(this.ball, 0);
     // No reutilizar contactos de la posición anterior después de un gol.
-    Engine.clear(this.engine);
+    this.resetCollisions();
   }
 
   step(one: Input, two: Input) {
@@ -104,7 +104,14 @@ export class Simulation {
     this.score = [...state.score]; this.inputs = state.inputs.map(i => ({ ...i })) as [Input, Input];
     this.kicks = [...state.kicks];
     this.players.forEach((p, i) => body(p, state.players[i])); body(this.ball, state.ball);
+    this.resetCollisions();
+  }
+
+  private resetCollisions() {
     Engine.clear(this.engine);
+    // Engine.clear también vacía el detector. Volver a registrar todos los
+    // cuerpos, incluido el piso, aunque el mundo no haya sido modificado.
+    Matter.Detector.setBodies(this.engine.detector, Composite.allBodies(this.engine.world));
   }
 
   destroy() { Composite.clear(this.engine.world, false); Engine.clear(this.engine); }
