@@ -7,7 +7,9 @@ La página está alojada en Sites y el juego usa WebRTC DataChannel. Render ya n
 Hay dos canales entre los jugadores:
 
 - `game`: entradas y estados frecuentes, sin ordenar ni retransmitir paquetes atrasados.
-- `control`: mensajes fiables para pausa y medición de ping.
+- `control`: mensajes fiables para pausa, medición de ping, resultado final y revancha.
+
+Los partidos duran 60 segundos de juego, incluidas las pausas de gol. El reloj se pausa si alguno cambia de pestaña. Al llegar a 0:00 se congela el marcador: gana quien hizo más goles y, si están iguales, hay empate. Ambos pueden pulsar **Jugar otra vez**; cuando los dos aceptan se reinician reloj, marcador y posiciones en la misma sala y conexión. El anfitrión confirma el resultado y el nuevo partido; los paquetes atrasados del partido anterior se descartan.
 
 HTTP sólo conecta la sala inicialmente. Las ofertas y respuestas se guardan en D1, son accesibles sólo por los participantes y dejan de ser accesibles al vencer la sala. Las filas vencidas se limpian al crear otra sala. No se guarda el marcador ni el historial de partidas.
 

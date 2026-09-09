@@ -3,6 +3,67 @@ import assert from "node:assert/strict";
 import Matter from "../client/node_modules/matter-js/build/matter.js";
 import { Simulation, emptyInput, RULES, isInput } from "../client/src/game/simulation";
 
+test("el minuto incluye las pausas de gol y congela el resultado al terminar", () => {
+  const sim = new Simulation();
+  try {
+    const input = emptyInput();
+    sim.pause = RULES.matchTicks - 1;
+    sim.score = [2, 1];
+    for (let i = 0; i < RULES.matchTicks - 1; i++) sim.step(input, input);
+    assert.equal(sim.finished, false);
+    assert.equal(sim.remainingTicks, 1);
+    sim.step(input, input);
+    assert.equal(sim.finished, true);
+    assert.equal(sim.winner, 1);
+    const final = sim.snapshot();
+    for (let i = 0; i < 120; i++) sim.step({ ...input, direction: 1, kick: 1 }, input);
+    assert.deepEqual(sim.snapshot(), final);
+  } finally { sim.destroy(); }
+});
+
+test("resultado empatado o victoria derecha y último gol dentro del tiempo", () => {
+  const sim = new Simulation();
+  try {
+    sim.remainingTicks = 1;
+    sim.score = [0, 0];
+    Matter.Body.setPosition(sim.ball, { x: 40, y: 530 });
+    sim.step(emptyInput(), emptyInput());
+    assert.equal(sim.winner, 2);
+    assert.deepEqual(sim.score, [0, 1]);
+    sim.score = [1, 1];
+    assert.equal(sim.winner, null);
+  } finally { sim.destroy(); }
+});
+
+test("revancha requiere ambos jugadores, ignora duplicados y sincroniza varios partidos", () => {
+  const host = new Simulation(), guest = new Simulation();
+  try {
+    assert.equal(host.requestRematch(1, 0), false);
+    for (let match = 0; match < 3; match++) {
+      host.remainingTicks = 1; host.pause = 2; host.score = [3, 2];
+      host.step(emptyInput(), emptyInput());
+      const endTick = host.tick;
+      const first = match % 2 ? 2 : 1;
+      assert.equal(host.requestRematch(first, match), true);
+      assert.equal(host.finished, true);
+      assert.equal(host.requestRematch(first, match), false);
+      guest.restore(host.snapshot());
+      assert.deepEqual(guest.snapshot(), host.snapshot());
+      assert.equal(host.requestRematch(first === 1 ? 2 : 1, match), true);
+      assert.equal(host.requestRematch(1, match), false);
+      assert.equal(host.match, match + 1);
+      assert.equal(host.remainingTicks, RULES.matchTicks);
+      assert.equal(host.pause, 0);
+      assert.deepEqual(host.score, [0, 0]);
+      assert.deepEqual(host.ready, [false, false]);
+      assert.equal(host.ball.position.x, 512);
+      assert.ok(host.tick > endTick);
+      guest.restore(host.snapshot());
+      assert.deepEqual(guest.snapshot(), host.snapshot());
+    }
+  } finally { host.destroy(); guest.destroy(); }
+});
+
 test("mover y saltar responde en el primer paso, sin una respuesta de red", () => {
   const sim = new Simulation();
   const one = emptyInput(), two = emptyInput();

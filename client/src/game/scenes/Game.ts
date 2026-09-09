@@ -13,6 +13,9 @@ export class Game extends Scene {
   private boots: Phaser.GameObjects.Image[];
   private ball: Phaser.GameObjects.Image;
   private scoreText: Phaser.GameObjects.Text;
+  private clockText: Phaser.GameObjects.Text;
+  private replayButton: Phaser.GameObjects.Text;
+  private confirmedFinished = false;
   private status: Phaser.GameObjects.Text;
   private pingText: Phaser.GameObjects.Text;
   private local = emptyInput();
@@ -40,11 +43,19 @@ export class Game extends Scene {
     this.boots = [1, 2].map(team => this.add.image(0, 0, `boot-${team}`));
     this.ball = this.add.image(512, 400, "football");
     this.scoreText = this.add.text(512, 175, "0 : 0", { fontFamily: "Arial Black", fontSize: 64, stroke: "#000000", strokeThickness: 5 }).setOrigin(0.5);
+    this.clockText = this.add.text(512, 240, "1:00", { fontFamily: "Arial Black", fontSize: 32, stroke: "#000000", strokeThickness: 4 }).setOrigin(0.5);
+    this.replayButton = this.add.text(512, 315, "Jugar otra vez", { fontFamily: "Arial", fontSize: 26, backgroundColor: "#185c35", padding: { x: 24, y: 14 } }).setOrigin(0.5).setVisible(false).setInteractive({ useHandCursor: true });
+    this.replayButton.on("pointerdown", () => {
+      if (!this.peer.ready || !this.confirmedFinished) return;
+      if (this.peer.host) this.rematch(1, this.sim.match);
+      else this.peer.send({ type: "rematch", match: this.sim.match }, true);
+    });
     this.status = this.add.text(512, 90, "Preparando conexión…", { fontFamily: "Arial", fontSize: "22px", align: "center", wordWrap: { width: 900 } }).setOrigin(0.5);
     this.pingText = this.add.text(512, 135, "", { fontFamily: "Arial", fontSize: "16px" }).setOrigin(0.5);
     this.add.text(512, 650, `Sala ${this.pin} · Mantené esta pestaña abierta durante la partida`, { fontFamily: "Arial", fontSize: "18px" }).setOrigin(0.5);
     this.peer = new Peer(this.pin, text => this.status.setText(text), text => {
       this.started = false; this.local.direction = 0; this.status.setText(text);
+      this.replayButton.setVisible(false);
     });
     this.peer.onReady = () => {
       this.status.setText(CONTROLS);
@@ -72,11 +83,14 @@ export class Game extends Scene {
   }
 
   private receive(message: Record<string, unknown>) {
+    if (this.peer.host && message.type === "rematch" && Number.isSafeInteger(message.match)) {
+      this.rematch(2, message.match as number);
+    }
     if (message.type === "visibility" && typeof message.hidden === "boolean") {
       this.remoteHidden = message.hidden;
       this.remote.direction = 0; this.accumulator = 0;
     }
-    if (this.peer.host && message.type === "input" && isInput(message.input)) {
+    if (this.peer.host && message.type === "input" && message.match === this.sim.match && !this.sim.finished && isInput(message.input)) {
       // El canal rápido puede entregar desordenado: nunca retroceder una orden.
       if (message.input.seq > this.remote.seq) { this.remote = message.input; this.remoteAt = performance.now(); }
     }
@@ -84,8 +98,11 @@ export class Game extends Scene {
       const state = message.state;
       if (state.tick <= this.lastSnapshot) return;
       this.lastSnapshot = state.tick;
+      const newMatch = state.match !== this.sim.match;
+      if (newMatch) this.resetMatchControls();
+      this.confirmedFinished = state.remainingTicks === 0;
       const old = [...this.sim.players, this.sim.ball].map(body => ({ ...body.position }));
-      const reset = state.round !== this.confirmedRound || !this.started || (this.sim.pause > 0 && state.pause === 0);
+      const reset = newMatch || state.round !== this.confirmedRound || !this.started || (this.sim.pause > 0 && state.pause === 0);
       if (state.round > this.confirmedRound) this.sound.play("die");
       this.confirmedRound = state.round; this.confirmedScore = [...state.score];
       // Volver al estado confirmado y repetir las teclas aún no recibidas por el anfitrión.
@@ -104,9 +121,18 @@ export class Game extends Scene {
     if (!this.sim || !this.peer) return;
     const paused = document.hidden || this.remoteHidden;
     if (this.peer.ready && this.started) {
-      this.status.setText(paused ? "Partida pausada: los dos deben volver a la pestaña del juego." : CONTROLS);
+      const result = this.sim.winner === null ? "Empate" : `Ganó el jugador ${this.sim.winner === 1 ? "izquierdo" : "derecho"}`;
+      this.status.setText(this.confirmedFinished ? `¡Terminó el partido! ${result}` : paused ? "Partida pausada: los dos deben volver a la pestaña del juego." : CONTROLS);
       this.pingText.setText(`Conexión ${this.peer.route}: ${Math.round(this.peer.rtt)} ms · Jugás a la ${this.peer.host ? "izquierda" : "derecha"}`);
     }
+    this.scoreText.setText(this.confirmedScore.join(" : "));
+    const seconds = Math.ceil(this.sim.remainingTicks / 60);
+    this.clockText.setText(`${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`);
+    this.replayButton.setVisible(this.confirmedFinished && this.peer.ready);
+    const ready = this.sim.ready[this.peer.host ? 0 : 1];
+    this.replayButton.setText(ready ? "Esperando al otro jugador…" : this.sim.ready.some(Boolean) ? "Tu rival quiere revancha · Jugar otra vez" : "Jugar otra vez");
+    this.replayButton.setAlpha(ready ? 0.7 : 1);
+    if (this.confirmedFinished || this.sim.finished) { this.accumulator = 0; this.renderBodies(delta); return; }
     if (!this.started || !this.peer.ready || paused) { this.accumulator = 0; return; }
     const { UP, LEFT, RIGHT, SPACE } = this.keys;
     this.local.direction = LEFT.isDown ? -1 : RIGHT.isDown ? 1 : 0;
@@ -122,17 +148,36 @@ export class Game extends Scene {
         this.sim.step(this.local, this.remote);
         if (this.sim.round > before) this.sound.play("die");
         this.confirmedScore = [...this.sim.score];
-        if (this.sim.tick % RULES.snapshotEveryTicks === 0) this.peer.send({ type: "state", state: this.sim.snapshot() });
+        this.confirmedFinished = this.sim.finished;
+        if (this.sim.finished || this.sim.tick % RULES.snapshotEveryTicks === 0) this.peer.send({ type: "state", state: this.sim.snapshot() }, this.sim.finished);
       } else {
         const input = { ...this.local };
         this.pending.push(input);
         if (this.pending.length > 120) this.pending.shift();
-        this.peer.send({ type: "input", input });
+        this.peer.send({ type: "input", match: this.sim.match, input });
         this.sim.step(this.sim.inputs[0], input);
       }
+      if (this.sim.finished) { this.accumulator = 0; break; }
     }
     this.scoreText.setText(this.confirmedScore.join(" : "));
     this.renderBodies(delta);
+  }
+
+  private resetMatchControls() {
+    this.local.direction = 0; this.remote.direction = 0;
+    this.pending = []; this.accumulator = 0;
+    this.input.keyboard?.resetKeys();
+    this.corrections = this.corrections.map(() => ({ x: 0, y: 0 }));
+  }
+
+  private rematch(team: 1 | 2, match: number) {
+    if (!this.sim.requestRematch(team, match)) return;
+    if (!this.sim.finished) {
+      this.resetMatchControls();
+      this.confirmedScore = [...this.sim.score];
+      this.confirmedFinished = false;
+    }
+    this.peer.send({ type: "state", state: this.sim.snapshot() }, true);
   }
 
   private renderBodies(delta: number) {
@@ -159,6 +204,9 @@ function isSnapshot(value: unknown): value is Snapshot {
   const numbers = (a: unknown) => Array.isArray(a) && a.length === 2 && a.every(Number.isFinite);
   const body = (b: unknown) => !!b && typeof b === "object" && ["x", "y", "vx", "vy", "angle", "spin"].every(k => Number.isFinite((b as Record<string, unknown>)[k]));
   return Number.isSafeInteger(v.tick) && v.tick >= 0 && Number.isSafeInteger(v.round) && Number.isSafeInteger(v.pause)
+    && Number.isSafeInteger(v.match) && v.match >= 0
+    && Number.isSafeInteger(v.remainingTicks) && v.remainingTicks >= 0 && v.remainingTicks <= RULES.matchTicks
+    && Array.isArray(v.ready) && v.ready.length === 2 && v.ready.every(b => typeof b === "boolean")
     && numbers(v.score) && numbers(v.kicks) && Array.isArray(v.inputs) && v.inputs.length === 2 && v.inputs.every(isInput)
     && Array.isArray(v.players) && v.players.length === 2 && v.players.every(body) && body(v.ball);
 }
