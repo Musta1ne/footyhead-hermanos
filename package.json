@@ -5,15 +5,26 @@
   "license": "ISC",
   "main": "index.js",
   "scripts": {
-    "setup": "npm ci --include=dev && npm ci --include=dev --prefix server && npm ci --include=dev --prefix client",
-    "dev": "concurrently -k \"npm run start-server --prefix server\" \"npm run start-client --prefix client\"",
-    "build": "npm run build --prefix client && npm run build --prefix server",
-    "start": "npm start --prefix server",
-    "test": "npm test --prefix server"
+    "setup": "npm ci --include=dev && npm ci --include=dev --prefix client",
+    "dev": "npm run build --prefix client && npm run db:local && concurrently -k \"wrangler dev --port 2567\" \"npm run start-client --prefix client\"",
+    "build": "npm run typecheck && npm run build --prefix client && node scripts/build.mjs",
+    "start": "npm run db:local && wrangler dev --port 8080",
+    "typecheck": "tsc --noEmit -p client/tsconfig.json && tsc --noEmit -p worker/tsconfig.json",
+    "db:generate": "drizzle-kit generate",
+    "db:local": "wrangler d1 migrations apply DB --local",
+    "test": "tsx --test tests/*.test.ts"
   },
   "description": "",
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "@cloudflare/workers-types": "^5.20260908.1",
+    "concurrently": "^8.2.2",
+    "drizzle-kit": "^0.31.10",
+    "drizzle-orm": "^0.45.2",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.13",
+    "typescript": "^5.5.4",
+    "werift": "^0.24.4",
+    "wrangler": "^4.130.0"
   },
   "engines": {
     "node": ">=22"

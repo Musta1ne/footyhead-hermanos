@@ -1,0 +1,7 @@
+{
+  "name": "footyhead-local",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-09-01",
+  "assets": { "directory": "client/dist", "binding": "ASSETS", "run_worker_first": true },
+  "d1_databases": [{ "binding": "DB", "database_name": "footyhead-local", "database_id": "local", "migrations_dir": "drizzle" }]
+}

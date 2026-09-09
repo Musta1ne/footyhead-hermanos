@@ -1,271 +1,164 @@
-import { serverUrl } from "../../connection";
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import { Scene } from "phaser";
-import { Client as ColyseusClient, Room } from "colyseus.js";
+import Phaser, { Scene } from "phaser";
+import { Peer } from "../peer";
+import { Simulation, RULES, emptyInput, isInput, type Input, type Snapshot } from "../simulation";
 
-import { CollisionCategories, PlayerNumber } from "../lib";
-import { Ball, Goal, Player } from "../objects";
+const CONTROLS = "← / →: moverse · ↑: saltar · Espacio: patear";
 
 export class Game extends Scene {
-  camera: Phaser.Cameras.Scene2D.Camera;
-  cursors: Record<string, Phaser.Input.Keyboard.Key>;
-  background: Phaser.GameObjects.Image;
-  scoreText: Phaser.GameObjects.Text;
-  platforms: Phaser.Physics.Matter.Image;
-  players: Record<string, Player>;
-  ball: Ball;
-  room: Room;
-  roomData: any;
-  rtt = 150;
-  lastDirection = "";
-  lastMoveSent = -Infinity;
-  predictUntil = 0;
-  goalUntil = 0;
-  lastLocalKick = -Infinity;
-  client = new ColyseusClient(serverUrl);
+  private pin = "";
+  private sim: Simulation;
+  private peer: Peer;
+  private keys: Record<string, Phaser.Input.Keyboard.Key>;
+  private heads: Phaser.GameObjects.Image[];
+  private boots: Phaser.GameObjects.Image[];
+  private ball: Phaser.GameObjects.Image;
+  private scoreText: Phaser.GameObjects.Text;
+  private status: Phaser.GameObjects.Text;
+  private pingText: Phaser.GameObjects.Text;
+  private local = emptyInput();
+  private remote = emptyInput();
+  private pending: Input[] = [];
+  private remoteAt = 0;
+  private accumulator = 0;
+  private started = false;
+  private remoteHidden = false;
+  private lastSnapshot = -1;
+  private confirmedRound = 0;
+  private confirmedScore = [0, 0];
+  private corrections = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }];
 
-  constructor() {
-    super("Game");
-    this.players = {};
-  }
+  constructor() { super("Game"); }
+  init(data: { pin: string }) { this.pin = data.pin.replaceAll("-", "").toUpperCase(); }
 
-  async init(data: any) {
-    this.roomData = data;
-  }
-
-  preload() {
-    this.camera = this.cameras.main;
-    this.cursors = this.input.keyboard?.addKeys("UP, LEFT, RIGHT, SPACE") as Record<
-      string,
-      Phaser.Input.Keyboard.Key
-    >;
-  }
-
-  async create(_time: number, _delta: number) {
-    const { categoryFootball, categoryPlatform, categoryPlayer } =
-      CollisionCategories;
-    const shapes = this.cache.json.get("shapes");
-
-
-    try {
-      this.room = await this.client.joinById(this.roomData.roomId, {
-        pin: this.roomData.pin,
-      });
-      console.log("Joined successfully!");
-    } catch (e) {
-      this.add.text(100, 300, "No se pudo entrar: sala llena o cerrada. Volvé a crear una.", { fontSize: "22px" });
-      return;
-    }
-
-    this.events.once("shutdown", () => { this.room?.leave(); this.players = {}; });
-    this.room.onLeave(() => {
-      this.room = undefined as any;
-      this.add.text(100, 270, "Partida cerrada. Volvé al inicio para crear otra.", { fontSize: "24px", backgroundColor: "#222222" }).setDepth(100);
+  create() {
+    this.sim = new Simulation();
+    this.keys = this.input.keyboard!.addKeys("UP, LEFT, RIGHT, SPACE") as typeof this.keys;
+    this.add.image(512, 600, "ground").setScale(1.3, 1);
+    this.add.image(25, 510, "goal");
+    this.add.image(999, 513, "goal").setFlipX(true);
+    this.heads = [1, 2].map(team => this.add.image(0, 0, `sprite-${team}`).setFlipX(team === 2));
+    this.boots = [1, 2].map(team => this.add.image(0, 0, `boot-${team}`));
+    this.ball = this.add.image(512, 400, "football");
+    this.scoreText = this.add.text(512, 175, "0 : 0", { fontFamily: "Arial Black", fontSize: 64, stroke: "#000000", strokeThickness: 5 }).setOrigin(0.5);
+    this.status = this.add.text(512, 90, "Preparando conexión…", { fontFamily: "Arial", fontSize: "22px", align: "center", wordWrap: { width: 900 } }).setOrigin(0.5);
+    this.pingText = this.add.text(512, 135, "", { fontFamily: "Arial", fontSize: "16px" }).setOrigin(0.5);
+    this.add.text(512, 650, `Sala ${this.pin} · Mantené esta pestaña abierta durante la partida`, { fontFamily: "Arial", fontSize: "18px" }).setOrigin(0.5);
+    this.peer = new Peer(this.pin, text => this.status.setText(text), text => {
+      this.started = false; this.local.direction = 0; this.status.setText(text);
     });
-    const status = this.add.text(512, 100, "Esperando al segundo jugador…", { fontSize: "24px" }).setOrigin(0.5);
-    this.room.onStateChange((state: any) => {
-      status.setText(state.players.size === 2 ? "← / →: moverse · ↑: saltar · Espacio: patear" : "Esperando al segundo jugador…");
-    });
-    this.room.onMessage("goal", () => {
-      this.goalUntil = this.time.now + 750;
-      this.sound.play("die");
-    });
-    const pingText = this.add.text(512, 130, "Midiendo conexión…", { fontSize: "16px" }).setOrigin(0.5);
-    this.room.onMessage("pong", (sentAt: number) => {
-      this.rtt = performance.now() - sentAt;
-      pingText.setText(`Conexión: ${Math.round(this.rtt)} ms`);
-    });
-    this.time.addEvent({ delay: 2000, loop: true, callback: () => this.room?.send("ping", performance.now()) });
-    this.room.send("ping", performance.now());
-    const release = () => {
-      this.input.keyboard?.resetKeys();
-      this.lastDirection = "stop";
-      this.room?.send("move", { direction: "stop" });
+    this.peer.onReady = () => {
+      this.status.setText(CONTROLS);
+      this.peer.send({ type: "visibility", hidden: document.hidden }, true);
+      if (this.peer.host) {
+        this.started = true;
+        this.peer.send({ type: "state", state: this.sim.snapshot() }, true);
+      }
+    };
+    this.peer.onMessage = message => this.receive(message);
+    const release = () => { this.input.keyboard?.resetKeys(); this.local.direction = 0; };
+    const visibility = () => {
+      release(); this.accumulator = 0;
+      this.peer.send({ type: "visibility", hidden: document.hidden }, true);
     };
     this.game.events.on("blur", release);
-    this.events.once("shutdown", () => this.game.events.off("blur", release));
-    this.scoreText = this.add
-      .text(512, 175, "0 : 0", {
-        fontFamily: "Arial Black",
-        fontSize: 64,
-        stroke: "#000000",
-        strokeThickness: 5,
-      })
-      .setOrigin(0.5);
-
-    this.matter.world.setBounds();
-
-    this.platforms = this.matter.add
-      .image(512, 600, "ground", undefined, { label: "ground" })
-      .setStatic(true)
-      .setFriction(0.3)
-      .setScale(1.3, 1)
-      .setCollisionCategory(categoryPlatform)
-      .setCollidesWith(categoryPlayer | categoryFootball);
-    this.sound.add("ball-touch");
-    this.sound.add("jump");
-    this.sound.add("die");
-
-    new Goal(this.matter.world, PlayerNumber.One, {
-      shape: shapes.goal,
+    document.addEventListener("visibilitychange", visibility);
+    this.events.once("shutdown", () => {
+      this.peer.close(); this.sim.destroy();
+      this.game.events.off("blur", release);
+      document.removeEventListener("visibilitychange", visibility);
     });
-    new Goal(this.matter.world, PlayerNumber.Two, {
-      shape: shapes.goal_2,
-    });
+    this.renderBodies(0);
+    void this.peer.connect();
+  }
 
-    this.room.state.players.onAdd((playerState: any, sessionId: string) => {
-      console.log(`Player has been added with sessionId: ${sessionId}`);
-      // Add player entity to world
-      const player = new Player(
-        this.matter.world,
-        playerState.team,
-        undefined,
-        {
-          shape: shapes[`boot_${playerState.team}`],
-        }
-      );
-      this.players[sessionId] = player;
-      player.boot.setData("lastKicked", -1);
-
-      playerState.onChange(() => {
-        // Cache updated coordinates for processing
-        player.body.setData("serverX", playerState.x);
-        player.body.setData("serverY", playerState.y);
-        player.body.setData("serverVX", playerState.vx);
-        player.body.setData("serverVY", playerState.vy);
-        player.body.setData("serverKick", playerState.kick);
-        player.body.setData("receivedAt", this.time.now);
+  private receive(message: Record<string, unknown>) {
+    if (message.type === "visibility" && typeof message.hidden === "boolean") {
+      this.remoteHidden = message.hidden;
+      this.remote.direction = 0; this.accumulator = 0;
+    }
+    if (this.peer.host && message.type === "input" && isInput(message.input)) {
+      // El canal rápido puede entregar desordenado: nunca retroceder una orden.
+      if (message.input.seq > this.remote.seq) { this.remote = message.input; this.remoteAt = performance.now(); }
+    }
+    if (!this.peer.host && message.type === "state" && isSnapshot(message.state)) {
+      const state = message.state;
+      if (state.tick <= this.lastSnapshot) return;
+      this.lastSnapshot = state.tick;
+      const old = [...this.sim.players, this.sim.ball].map(body => ({ ...body.position }));
+      const reset = state.round !== this.confirmedRound || !this.started || (this.sim.pause > 0 && state.pause === 0);
+      if (state.round > this.confirmedRound) this.sound.play("die");
+      this.confirmedRound = state.round; this.confirmedScore = [...state.score];
+      // Volver al estado confirmado y repetir las teclas aún no recibidas por el anfitrión.
+      this.pending = this.pending.filter(input => input.seq > state.inputs[1].seq);
+      this.sim.restore(state);
+      for (const input of this.pending) this.sim.step(state.inputs[0], input);
+      [...this.sim.players, this.sim.ball].forEach((body, i) => {
+        const error = { x: old[i].x + this.corrections[i].x - body.position.x, y: old[i].y + this.corrections[i].y - body.position.y };
+        this.corrections[i] = reset || Math.hypot(error.x, error.y) > 160 ? { x: 0, y: 0 } : error;
       });
-
-      player.body.setOnCollideWith([this.platforms], () => {
-        player.isGrounded = true;
-      });
-    });
-    this.room.state.players.onRemove((_: any, sessionId: string) => {
-      const player = this.players[sessionId];
-      if (player) {
-        player.destroy();
-        delete this.players[sessionId];
-      }
-    });
-
-    this.ball = new Ball(this.matter.world, 512, 500);
-    this.ball.setOnCollide(() => this.sound.play("ball-touch"));
-
-    this.room.state.ball.onChange(() => {
-      const ballState = this.room.state.ball;
-      this.ball.setData("ballX", ballState.x);
-      this.ball.setData("ballY", ballState.y);
-      this.ball.setData("ballVX", ballState.vx);
-      this.ball.setData("ballVY", ballState.vy);
-      this.ball.setData("ballAngle", ballState.angle);
-    });
-
-    this.room.state.score.onChange(() => {
-      const score = this.room.state.score;
-      this.scoreText.setText(
-        `${score[PlayerNumber.One]} : ${score[PlayerNumber.Two]}`
-      );
-    });
-
-    this.sound.setMute(!!this.matter.config.debug);
+      this.started = true;
+    }
   }
 
   update(_time: number, delta: number) {
-    if (!this.room || !this.ball) return;
-    const { UP, LEFT, RIGHT, SPACE } = this.cursors;
-    const local = this.players[this.room.sessionId];
-    const playing = this.room.state.players.size === 2 && this.time.now >= this.goalUntil;
-    const direction = playing ? (LEFT.isDown ? "left" : RIGHT.isDown ? "right" : "stop") : "stop";
-    if (direction !== this.lastDirection) this.predictUntil = this.time.now + Math.min(this.rtt + 80, 1000);
-    // Cambio inmediato y un latido de seguridad; no enviar 60 órdenes idénticas/segundo.
-    if (direction !== this.lastDirection || this.time.now - this.lastMoveSent >= 200) {
-      this.room.send("move", { direction });
-      this.lastDirection = direction;
-      this.lastMoveSent = this.time.now;
+    if (!this.sim || !this.peer) return;
+    const paused = document.hidden || this.remoteHidden;
+    if (this.peer.ready && this.started) {
+      this.status.setText(paused ? "Partida pausada: los dos deben volver a la pestaña del juego." : CONTROLS);
+      this.pingText.setText(`Conexión ${this.peer.route}: ${Math.round(this.peer.rtt)} ms · Jugás a la ${this.peer.host ? "izquierda" : "derecha"}`);
     }
-    const jump = Phaser.Input.Keyboard.JustDown(UP);
-    const kick = Phaser.Input.Keyboard.JustDown(SPACE);
-    if (playing && local) {
-      // Respuesta local en este fotograma, sin esperar al servidor.
-      local.body.setVelocityX(direction === "left" ? -4 : direction === "right" ? 4 : 0);
-      if (jump) {
-        this.room.send("move", { direction: "up" });
-        if (local.body.y >= 560 && Math.abs(local.body.getVelocity().y) < 1) {
-          local.body.setVelocityY(-6);
-          this.predictUntil = this.time.now + Math.min(this.rtt + 80, 1000);
-        }
+    if (!this.started || !this.peer.ready || paused) { this.accumulator = 0; return; }
+    const { UP, LEFT, RIGHT, SPACE } = this.keys;
+    this.local.direction = LEFT.isDown ? -1 : RIGHT.isDown ? 1 : 0;
+    if (Phaser.Input.Keyboard.JustDown(UP)) this.local.jump++;
+    if (Phaser.Input.Keyboard.JustDown(SPACE)) this.local.kick++;
+    this.accumulator += Math.min(delta, 100);
+    while (this.accumulator >= RULES.stepMs) {
+      this.accumulator -= RULES.stepMs;
+      this.local.seq++;
+      if (this.peer.host) {
+        if (performance.now() - this.remoteAt > RULES.inputTimeoutMs) this.remote.direction = 0;
+        const before = this.sim.round;
+        this.sim.step(this.local, this.remote);
+        if (this.sim.round > before) this.sound.play("die");
+        this.confirmedScore = [...this.sim.score];
+        if (this.sim.tick % RULES.snapshotEveryTicks === 0) this.peer.send({ type: "state", state: this.sim.snapshot() });
+      } else {
+        const input = { ...this.local };
+        this.pending.push(input);
+        if (this.pending.length > 120) this.pending.shift();
+        this.peer.send({ type: "input", input });
+        this.sim.step(this.sim.inputs[0], input);
       }
-      if (kick && this.time.now - this.lastLocalKick >= 300) {
-        this.lastLocalKick = this.time.now;
-        this.room.send("kick");
-        this.animateKick(local);
-      }
     }
-    for (const [id, player] of Object.entries(this.players)) {
-      this.interpolatePlayer(player, id === this.room.sessionId && playing, delta);
-    }
-    this.interpolateBall();
+    this.scoreText.setText(this.confirmedScore.join(" : "));
+    this.renderBodies(delta);
   }
 
-  animateKick(player: Player) {
-    this.events.emit(`kick-${player.team}`);
-    player.boot.setVelocity(player.team === PlayerNumber.One ? 10 : -10, -5);
+  private renderBodies(delta: number) {
+    const decay = Math.exp(-delta / 70);
+    [...this.sim.players, this.sim.ball].forEach((body, i) => {
+      this.corrections[i].x *= decay; this.corrections[i].y *= decay;
+      const sprite = i === 2 ? this.ball : this.heads[i];
+      sprite.setPosition(body.position.x + this.corrections[i].x, body.position.y + this.corrections[i].y);
+      if (i === 2) sprite.setRotation(body.angle);
+    });
+    this.boots.forEach((boot, i) => {
+      const age = this.sim.tick - this.sim.kicks[i];
+      const swing = age >= 0 && age < 12 ? Math.sin(age / 12 * Math.PI) : 0;
+      const side = i === 0 ? 1 : -1;
+      boot.setPosition(this.heads[i].x + side * (-15 + swing * 40), this.heads[i].y + 25 - swing * 18);
+      boot.setRotation(side * (-1.3 + swing * 1.8));
+    });
   }
+}
 
-  interpolatePlayer(player: Player, local: boolean, delta: number) {
-    const { serverX, serverY, serverVX, serverVY, serverKick } =
-      player.body.data.values;
-
-    if (!Number.isFinite(serverX) || !Number.isFinite(serverY)) return;
-    if (serverKick && !player.boot.getData("wasKicking") && (!local || this.time.now - this.lastLocalKick > 600)) {
-      this.events.emit(`kick-${player.team}`);
-      player.boot.setData("lastKicked", this.time.now);
-      player.boot.setVelocity(player.team === PlayerNumber.One ? 10 : -10, -5);
-    }
-
-    player.boot.setData("wasKicking", serverKick);
-    if (local) {
-      if (this.time.now < this.predictUntil) return;
-      // Extrapolación acotada; conservar la velocidad local y corregir sólo el error.
-      const age = Math.min(150, this.rtt / 2 + this.time.now - (player.body.getData("receivedAt") || this.time.now));
-      const targetX = Phaser.Math.Clamp(serverX + serverVX * age / (1000 / 60), 22, 1002);
-      const errorX = targetX - player.body.x;
-      const errorY = serverY - player.body.y;
-      const blend = 1 - Math.exp(-Math.min(delta, 50) / 120);
-      player.body.setPosition(
-        Math.abs(errorX) > 180 ? targetX : player.body.x + errorX * blend,
-        Math.abs(errorY) > 180 ? serverY : player.body.y + errorY * blend
-      );
-      return;
-    }
-    player.body.setPosition(
-      Phaser.Math.Linear(player.body.x, serverX, 0.2),
-      Phaser.Math.Linear(player.body.y, serverY, 0.2)
-    );
-    player.body.setVelocity(
-      Phaser.Math.Linear(player.body.getVelocity().x, serverVX, 0.2),
-      Phaser.Math.Linear(player.body.getVelocity().y, serverVY, 0.2)
-    );
-  }
-
-  interpolateBall() {
-    if (!this.ball.data) return;
-
-    const { ballX, ballY, ballVX, ballVY, ballAngle } = this.ball.data.values;
-    if (!Number.isFinite(ballX) || !Number.isFinite(ballY)) return;
-    this.ball.setPosition(
-      Phaser.Math.Linear(this.ball.x, ballX, 0.1),
-      Phaser.Math.Linear(this.ball.y, ballY, 0.2)
-    );
-    this.ball.setVelocity(
-      Phaser.Math.Linear(this.ball.getVelocity().x, ballVX, 0.5),
-      Phaser.Math.Linear(this.ball.getVelocity().y, ballVY, 0.5)
-    );
-    this.ball.setAngularVelocity(
-      Phaser.Math.Linear(this.ball.getAngularVelocity(), ballAngle, 0.1)
-    );
-  }
-
+function isSnapshot(value: unknown): value is Snapshot {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Snapshot;
+  const numbers = (a: unknown) => Array.isArray(a) && a.length === 2 && a.every(Number.isFinite);
+  const body = (b: unknown) => !!b && typeof b === "object" && ["x", "y", "vx", "vy", "angle", "spin"].every(k => Number.isFinite((b as Record<string, unknown>)[k]));
+  return Number.isSafeInteger(v.tick) && v.tick >= 0 && Number.isSafeInteger(v.round) && Number.isSafeInteger(v.pause)
+    && numbers(v.score) && numbers(v.kicks) && Array.isArray(v.inputs) && v.inputs.length === 2 && v.inputs.every(isInput)
+    && Array.isArray(v.players) && v.players.length === 2 && v.players.every(body) && body(v.ball);
 }

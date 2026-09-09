@@ -3,3 +3,5 @@ client/dist/
 server/build/
 .env
 *.log
+dist/
+.wrangler/

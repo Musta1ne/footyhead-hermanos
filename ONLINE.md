@@ -1,45 +1,30 @@
-# Jugar desde dos casas
+# Alojamiento y conexión online
 
-La web necesita un servidor Node.js encendido: no alcanza con subir archivos a GitHub Pages. Ambos jugadores se conectan al mismo servidor usando un enlace HTTPS.
+## Versión actual
 
-## Publicar en Render
+La página está alojada en Sites y el juego usa WebRTC DataChannel. Render ya no es una dependencia del código.
 
-Esta es una opción compatible con Node y WebSockets. Elegí una sola instancia. No necesita base de datos, disco persistente ni servicios adicionales.
+Hay dos canales entre los jugadores:
 
-1. Creá un repositorio tuyo en GitHub y subí **el contenido de esta carpeta adaptada**, incluyendo client, server, package.json y los tres package-lock.json. No subas node_modules ni carpetas build/dist. Si conectás el repositorio original del autor, no tendrás estos arreglos.
-2. En Render elegí **New → Web Service** y conectá tu repositorio.
-3. Configurá:
-   - Language: **Node**.
-   - Root Directory: vacío si package.json está en la raíz de tu repositorio.
-   - Build Command: `npm run setup && npm run build`.
-   - Start Command: `npm start`.
-   - Variable `NODE_ENV`: `production`.
-   - Variable `NODE_VERSION`: `22`.
-   - Health Check Path: `/health`.
-   - Instancias: **1**.
-4. Elegí la región más cercana a ustedes y revisá el precio del plan antes de contratarlo.
-5. Cuando termine el despliegue, abrí la URL HTTPS que te dé Render.
-6. Creá una sala, entrá y mandale el enlace a tu hermano. Él abre ese mismo enlace y empieza la partida.
+- `game`: entradas y estados frecuentes, sin ordenar ni retransmitir paquetes atrasados.
+- `control`: mensajes fiables para pausa y medición de ping.
 
-No cambies ninguna IP en el código ni abras puertos del router. El alojamiento proporciona PORT y el juego usa el dominio de la página para HTTP y WebSockets seguros.
+HTTP sólo conecta la sala inicialmente. Las ofertas y respuestas se guardan en D1, son accesibles sólo por los participantes y dejan de ser accesibles al vencer la sala. Las filas vencidas se limpian al crear otra sala. No se guarda el marcador ni el historial de partidas.
 
-Documentación oficial consultada: [Node/Express](https://render.com/docs/deploy-node-express-app) y [WebSockets](https://render.com/docs/websocket).
+## Publicar cambios
 
-## Si algo falla
+Este proyecto ya tiene su identificación en `.openai/hosting.json`. Se debe reutilizar, no crear otro sitio. La publicación incluye la carpeta `dist` generada por `npm run build`; el alojamiento aplica las migraciones de `drizzle/` y conecta la base lógica `DB`.
 
-| Síntoma | Qué revisar |
-| --- | --- |
-| Tu hermano no puede abrir localhost | Usen la dirección HTTPS del alojamiento. |
-| Sala cerrada o inexistente | Creen una nueva; puede haber caducado o reiniciado el servidor. |
-| Sala llena | Cerrá pestañas duplicadas y creen otra partida. Sólo entran dos jugadores. |
-| Pantalla de espera | Falta que entre el segundo jugador al mismo enlace. |
-| No conecta en producción | Debe ser un Web Service con WebSockets, una instancia y el mismo puerto para web y juego. |
-| Error al compilar | Revisá Node 22+, los tres lockfiles y el registro de la compilación. |
-| Mucho retraso | Prueben una región más cercana, cable o Wi-Fi estable y sin descargas simultáneas. |
-| Se corta al actualizar la página | Por ahora la desconexión cierra la sala; no hay reconexión automática. |
+El Worker necesita un entorno Cloudflare Workers compatible y un binding de archivos `ASSETS`. No se puede subir solamente el HTML a un alojamiento estático: la creación de salas necesita el Worker y D1.
 
-## Comprobación desde sus casas
+Para pedir una actualización basta con indicar qué querés cambiar y pedir que se publique en el mismo sitio.
 
-Entren desde computadoras distintas. Cada uno mueve su jugador y patea. Confirmen que ambos ven el mismo marcador después de un gol. Cierren una pestaña y creen otra sala para comprobar el reinicio.
+## Si no conecta desde dos casas
 
-La versión preparada es para uso pequeño entre ustedes; antes de abrirla a desconocidos conviene migrar las dependencias antiguas y agregar límites por IP. No hay cuentas ni historial de partidas.
+STUN permite descubrir cómo salir de muchas redes domésticas. Algunas combinaciones de NAT o firewalls necesitan un relay TURN. La versión actual no trae credenciales de un proveedor TURN, por lo que no garantiza conexión en esas redes.
+
+La variable de entorno opcional `ICE_SERVERS_JSON` acepta la lista de servidores ICE estándar de WebRTC. Dejarla sin definir usa los STUN predeterminados. Para TURN se necesita un proveedor y credenciales válidas; no usar servidores de demostración ni pegar secretos en el código. Las credenciales entregadas al navegador son visibles para sus usuarios: en un servicio público conviene integrar la emisión de credenciales temporales del proveedor en `/api/config` antes de activarlo.
+
+TURN sería sólo una alternativa cuando la conexión directa falla. La física seguiría corriendo en el navegador del creador. No se promete un valor de ping: hay que medir entre las dos casas.
+
+Referencia técnica: https://webrtc.org/getting-started/peer-connections

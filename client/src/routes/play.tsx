@@ -4,7 +4,7 @@ import { Button, Title } from "../layout";
 import { useState } from "react";
 
 const prettyPrint = (str: string) =>
-  str && `${str.slice(0, 3)}-${str.slice(3)}`;
+  str && `${str.slice(0, 5)}-${str.slice(5)}`;
 
 function Play() {
   const [copyButtonText, setCopyButtonText] = useState<string>("Copiar enlace");
@@ -28,7 +28,7 @@ function Play() {
           </div>
         ) : null}
       </div>
-      <p>Copiá el enlace y mandáselo a tu hermano. Entren los dos para empezar.</p>
+      <p>Copiá el enlace y mandáselo a tu hermano. Entrá desde esta pestaña: vos jugás a la izquierda y él a la derecha.</p>
       <div style={{ display: "flex" }}>
         <Link to="../">
           <Button>← Volver</Button>

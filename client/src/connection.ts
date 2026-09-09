@@ -1,4 +1,3 @@
-export const serverUrl = window.location.origin;
 export async function roomRequest(path: string, method = "GET") {
   let response: Response;
   try {
@@ -10,5 +9,7 @@ export async function roomRequest(path: string, method = "GET") {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.message || "No se pudo abrir la sala.");
   }
-  return response.json();
+  const data = await response.json();
+  if (data.hostToken) sessionStorage.setItem(`room:${data.pin}`, data.hostToken);
+  return data;
 }
