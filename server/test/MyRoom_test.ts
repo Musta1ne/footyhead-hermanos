@@ -55,6 +55,15 @@ describe("Partidas privadas para dos jugadores", () => {
     assert.ok(room.playerOne.velocity.x < -3.5);
     assert.notEqual(room.playerTwo.velocity.x, -4);
   });
+  it("mantiene la dirección sin mensajes por fotograma y frena si dejan de llegar", async () => {
+    const { room, first } = await pair();
+    first.send("move", { direction: "right" });
+    await room.waitForNextMessage();
+    await new Promise(resolve => setTimeout(resolve, 250));
+    assert.ok(room.playerOne.velocity.x > 3.5);
+    await new Promise(resolve => setTimeout(resolve, 650));
+    assert.ok(Math.abs(room.playerOne.velocity.x) < 0.1);
+  });
   it("crea y resuelve enlaces HTTP y los elimina al salir", async () => {
     const created = await server.http.post("/api/rooms");
     assert.equal(created.statusCode, 201);

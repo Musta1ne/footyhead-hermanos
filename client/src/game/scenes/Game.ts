@@ -17,6 +17,12 @@ export class Game extends Scene {
   ball: Ball;
   room: Room;
   roomData: any;
+  rtt = 150;
+  lastDirection = "";
+  lastMoveSent = -Infinity;
+  predictUntil = 0;
+  goalUntil = 0;
+  lastLocalKick = -Infinity;
   client = new ColyseusClient(serverUrl);
 
   constructor() {
@@ -30,7 +36,7 @@ export class Game extends Scene {
 
   preload() {
     this.camera = this.cameras.main;
-    this.cursors = this.input.keyboard?.addKeys(" W, A, D, space") as Record<
+    this.cursors = this.input.keyboard?.addKeys("UP, LEFT, RIGHT, SPACE") as Record<
       string,
       Phaser.Input.Keyboard.Key
     >;
@@ -59,9 +65,26 @@ export class Game extends Scene {
     });
     const status = this.add.text(512, 100, "Esperando al segundo jugador…", { fontSize: "24px" }).setOrigin(0.5);
     this.room.onStateChange((state: any) => {
-      status.setText(state.players.size === 2 ? "A / D: moverse · W: saltar · Espacio: patear" : "Esperando al segundo jugador…");
+      status.setText(state.players.size === 2 ? "← / →: moverse · ↑: saltar · Espacio: patear" : "Esperando al segundo jugador…");
     });
-    this.room.onMessage("goal", () => this.sound.play("die"));
+    this.room.onMessage("goal", () => {
+      this.goalUntil = this.time.now + 750;
+      this.sound.play("die");
+    });
+    const pingText = this.add.text(512, 130, "Midiendo conexión…", { fontSize: "16px" }).setOrigin(0.5);
+    this.room.onMessage("pong", (sentAt: number) => {
+      this.rtt = performance.now() - sentAt;
+      pingText.setText(`Conexión: ${Math.round(this.rtt)} ms`);
+    });
+    this.time.addEvent({ delay: 2000, loop: true, callback: () => this.room?.send("ping", performance.now()) });
+    this.room.send("ping", performance.now());
+    const release = () => {
+      this.input.keyboard?.resetKeys();
+      this.lastDirection = "stop";
+      this.room?.send("move", { direction: "stop" });
+    };
+    this.game.events.on("blur", release);
+    this.events.once("shutdown", () => this.game.events.off("blur", release));
     this.scoreText = this.add
       .text(512, 175, "0 : 0", {
         fontFamily: "Arial Black",
@@ -112,6 +135,7 @@ export class Game extends Scene {
         player.body.setData("serverVX", playerState.vx);
         player.body.setData("serverVY", playerState.vy);
         player.body.setData("serverKick", playerState.kick);
+        player.body.setData("receivedAt", this.time.now);
       });
 
       player.body.setOnCollideWith([this.platforms], () => {
@@ -148,30 +172,74 @@ export class Game extends Scene {
     this.sound.setMute(!!this.matter.config.debug);
   }
 
-  update(_time: number, _delta: number) {
+  update(_time: number, delta: number) {
     if (!this.room || !this.ball) return;
-
-    const { W, A, D, space } = this.cursors;
-    // Enviar únicamente las acciones del jugador local.
-    this.room.send("move", { direction: A.isDown ? "left" : D.isDown ? "right" : "stop" });
-    if (Phaser.Input.Keyboard.JustDown(W)) this.room.send("move", { direction: "up" });
-    if (Phaser.Input.Keyboard.JustDown(space)) this.room.send("kick");
-    for (const player of Object.values(this.players)) this.interpolatePlayer(player);
+    const { UP, LEFT, RIGHT, SPACE } = this.cursors;
+    const local = this.players[this.room.sessionId];
+    const playing = this.room.state.players.size === 2 && this.time.now >= this.goalUntil;
+    const direction = playing ? (LEFT.isDown ? "left" : RIGHT.isDown ? "right" : "stop") : "stop";
+    if (direction !== this.lastDirection) this.predictUntil = this.time.now + Math.min(this.rtt + 80, 1000);
+    // Cambio inmediato y un latido de seguridad; no enviar 60 órdenes idénticas/segundo.
+    if (direction !== this.lastDirection || this.time.now - this.lastMoveSent >= 200) {
+      this.room.send("move", { direction });
+      this.lastDirection = direction;
+      this.lastMoveSent = this.time.now;
+    }
+    const jump = Phaser.Input.Keyboard.JustDown(UP);
+    const kick = Phaser.Input.Keyboard.JustDown(SPACE);
+    if (playing && local) {
+      // Respuesta local en este fotograma, sin esperar al servidor.
+      local.body.setVelocityX(direction === "left" ? -4 : direction === "right" ? 4 : 0);
+      if (jump) {
+        this.room.send("move", { direction: "up" });
+        if (local.body.y >= 560 && Math.abs(local.body.getVelocity().y) < 1) {
+          local.body.setVelocityY(-6);
+          this.predictUntil = this.time.now + Math.min(this.rtt + 80, 1000);
+        }
+      }
+      if (kick && this.time.now - this.lastLocalKick >= 300) {
+        this.lastLocalKick = this.time.now;
+        this.room.send("kick");
+        this.animateKick(local);
+      }
+    }
+    for (const [id, player] of Object.entries(this.players)) {
+      this.interpolatePlayer(player, id === this.room.sessionId && playing, delta);
+    }
     this.interpolateBall();
   }
 
-  interpolatePlayer(player: Player) {
+  animateKick(player: Player) {
+    this.events.emit(`kick-${player.team}`);
+    player.boot.setVelocity(player.team === PlayerNumber.One ? 10 : -10, -5);
+  }
+
+  interpolatePlayer(player: Player, local: boolean, delta: number) {
     const { serverX, serverY, serverVX, serverVY, serverKick } =
       player.body.data.values;
 
     if (!Number.isFinite(serverX) || !Number.isFinite(serverY)) return;
-    if (serverKick && !player.boot.getData("wasKicking")) {
+    if (serverKick && !player.boot.getData("wasKicking") && (!local || this.time.now - this.lastLocalKick > 600)) {
       this.events.emit(`kick-${player.team}`);
       player.boot.setData("lastKicked", this.time.now);
       player.boot.setVelocity(player.team === PlayerNumber.One ? 10 : -10, -5);
     }
 
     player.boot.setData("wasKicking", serverKick);
+    if (local) {
+      if (this.time.now < this.predictUntil) return;
+      // Extrapolación acotada; conservar la velocidad local y corregir sólo el error.
+      const age = Math.min(150, this.rtt / 2 + this.time.now - (player.body.getData("receivedAt") || this.time.now));
+      const targetX = Phaser.Math.Clamp(serverX + serverVX * age / (1000 / 60), 22, 1002);
+      const errorX = targetX - player.body.x;
+      const errorY = serverY - player.body.y;
+      const blend = 1 - Math.exp(-Math.min(delta, 50) / 120);
+      player.body.setPosition(
+        Math.abs(errorX) > 180 ? targetX : player.body.x + errorX * blend,
+        Math.abs(errorY) > 180 ? serverY : player.body.y + errorY * blend
+      );
+      return;
+    }
     player.body.setPosition(
       Phaser.Math.Linear(player.body.x, serverX, 0.2),
       Phaser.Math.Linear(player.body.y, serverY, 0.2)

@@ -22,8 +22,8 @@ En PowerShell, si `npm` da un error de scripts o de npm-cli.js, usá `npm.cmd` e
 
 ## Controles y reglas
 
-- **A / D**: moverse a izquierda / derecha.
-- **W**: saltar desde el suelo.
+- **← / →**: moverse a izquierda / derecha.
+- **↑**: saltar desde el suelo.
 - **Espacio**: patear (hay que estar cerca de la pelota).
 - El primero que entra juega a la izquierda; el segundo, a la derecha.
 - La pelota empieza a moverse cuando entran los dos.

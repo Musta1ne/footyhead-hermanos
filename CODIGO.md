@@ -58,3 +58,7 @@ Las salas viven en memoria y requieren un solo proceso. No se agregó reconexió
 Se ejecutó npm audit fix sin forzar cambios mayores. La revisión posterior informó 5 avisos en el cliente y 18 en el servidor; son conteos de paquetes afectados, no necesariamente fallos explotables en esta aplicación. Incluyen la familia Colyseus 0.15 y sus dependencias, React Router, Vite y herramientas de pruebas. Eliminar todos exige revisar migraciones de versión y volver a probar el protocolo; no conviene ejecutar npm audit fix --force a ciegas. Para actualizar el diagnóstico: npm audit --prefix client y npm audit --prefix server.
 
 El código conserva la atribución del autor y los recursos gráficos/sonoros originales del repositorio.
+
+## Respuesta de controles
+
+El jugador local aplica movimiento y salto inmediatamente. El servidor conserva la dirección entre mensajes, publica a 30 Hz y corrige posiciones. La predicción es aproximada: ante latencia alta pueden verse correcciones; el ping se muestra en pantalla. Flechas para moverse y saltar, Espacio para patear.

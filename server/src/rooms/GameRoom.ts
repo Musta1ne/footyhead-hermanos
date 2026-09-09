@@ -27,6 +27,7 @@ export class GameRoom extends Room<GameState> {
   maxClients = 2;
   pin: string;
   paused = false;
+  movement = new Map<string, { direction: number; receivedAt: number }>();
   lastKick = new Map<string, number>();
 
   onCreate(options: any) {
@@ -38,6 +39,10 @@ export class GameRoom extends Room<GameState> {
     }
 
     this.setState(new GameState());
+    this.setPatchRate(1000 / 30);
+    this.onMessage("ping", (client, sentAt) => {
+      if (typeof sentAt === "number" && Number.isFinite(sentAt)) client.send("pong", sentAt);
+    });
 
     this.engine = Engine.create({ enableSleeping: true, gravity: { y: 0.7 } });
     this.world = this.engine.world;
@@ -85,7 +90,15 @@ export class GameRoom extends Room<GameState> {
     ]);
 
     this.setSimulationInterval((timeDelta) => {
-      if (this.state.players.size === 2 && !this.paused) Engine.update(this.engine, Math.min(timeDelta, 1000 / 60));
+      if (this.state.players.size !== 2 || this.paused) return;
+      // Mantener la dirección entre mensajes: la física no depende del ritmo de la red.
+      for (const [id, input] of this.movement) {
+        const body = id === this.hostId ? this.playerOne : this.playerTwo;
+        const direction = this.clock.elapsedTime - input.receivedAt < 750 ? input.direction : 0;
+        Sleeping.set(body, false);
+        Body.setVelocity(body, { x: direction * 4, y: body.velocity.y });
+      }
+      Engine.update(this.engine, Math.min(timeDelta, 1000 / 60));
     }, 1000 / 60);
 
     Events.on(this.engine, "afterUpdate", () => {
@@ -124,6 +137,10 @@ export class GameRoom extends Room<GameState> {
       if (this.paused || this.state.players.size !== 2 || !data) return;
       const player = client.sessionId === this.hostId ? this.playerOne : this.playerTwo;
       Sleeping.set(player, false);
+      const horizontal: Record<string, number> = { left: -1, right: 1, stop: 0 };
+      if (Object.prototype.hasOwnProperty.call(horizontal, data.direction)) {
+        this.movement.set(client.sessionId, { direction: horizontal[data.direction], receivedAt: this.clock.elapsedTime });
+      }
       if (data.direction === "left") Body.setVelocity(player, { x: -4, y: player.velocity.y });
       if (data.direction === "right") Body.setVelocity(player, { x: 4, y: player.velocity.y });
       if (data.direction === "stop") Body.setVelocity(player, { x: 0, y: player.velocity.y });
@@ -186,6 +203,7 @@ export class GameRoom extends Room<GameState> {
   scoreGoal(team: 1 | 2) {
     if (this.paused) return;
     this.paused = true;
+    this.movement.clear();
     this.state.score[team]++;
     this.broadcast("goal", team);
     this.clock.setTimeout(() => {
