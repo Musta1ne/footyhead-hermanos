@@ -1,5 +1,5 @@
-import { Room, Client, matchMaker } from "@colyseus/core";
-import { Ball, GameState, Player, Score } from "./schema/GameState";
+import { Room, Client } from "@colyseus/core";
+import { GameState, Player } from "./schema/GameState";
 import {
   Engine,
   Events,
@@ -10,7 +10,7 @@ import {
   Sleeping,
   Collision,
 } from "matter-js";
-import db from "../../db/init";
+import { roomsByPin } from "./registry";
 
 /**
  * Footyhead Game Room. First client that joins is designated host
@@ -25,8 +25,14 @@ export class GameRoom extends Room<GameState> {
   ball: Body;
 
   maxClients = 2;
+  pin: string;
+  paused = false;
+  lastKick = new Map<string, number>();
 
   onCreate(options: any) {
+    this.autoDispose = false; // Mantener el enlace mientras se comparte.
+    this.pin = options.pin;
+    this.clock.setTimeout(() => { if (this.clients.length === 0) this.disconnect(); }, 10 * 60_000);
     if (options.pin) {
       this.setPrivate();
     }
@@ -79,7 +85,7 @@ export class GameRoom extends Room<GameState> {
     ]);
 
     this.setSimulationInterval((timeDelta) => {
-      Engine.update(this.engine, timeDelta);
+      if (this.state.players.size === 2 && !this.paused) Engine.update(this.engine, Math.min(timeDelta, 1000 / 60));
     }, 1000 / 60);
 
     Events.on(this.engine, "afterUpdate", () => {
@@ -92,6 +98,11 @@ export class GameRoom extends Room<GameState> {
         Body.setVelocity(this.ball, { x: -4, y: -4 });
       }
 
+      // El servidor cuenta cada gol una sola vez para ambos navegadores.
+      if (!this.paused && this.state.players.size === 2 && this.ball.position.y > 480) {
+        if (this.ball.position.x < 65) this.scoreGoal(2);
+        else if (this.ball.position.x > 959) this.scoreGoal(1);
+      }
       this.state.ball.x = this.ball.position.x;
       this.state.ball.y = this.ball.position.y;
       this.state.ball.vx = this.ball.velocity.x;
@@ -109,139 +120,93 @@ export class GameRoom extends Room<GameState> {
       });
     });
 
-    this.onMessage("move", (client, { direction }) => {
-      const player =
-        client.sessionId == this.hostId ? this.playerOne : this.playerTwo;
+    this.onMessage("move", (client, data) => {
+      if (this.paused || this.state.players.size !== 2 || !data) return;
+      const player = client.sessionId === this.hostId ? this.playerOne : this.playerTwo;
       Sleeping.set(player, false);
-      if (direction == "left") {
-        Body.setVelocity(player, { x: -4, y: player.velocity.y });
-      } else if (direction == "right") {
-        Body.setVelocity(player, { x: 4, y: player.velocity.y });
-      }
-      if (direction == "up") {
+      if (data.direction === "left") Body.setVelocity(player, { x: -4, y: player.velocity.y });
+      if (data.direction === "right") Body.setVelocity(player, { x: 4, y: player.velocity.y });
+      if (data.direction === "stop") Body.setVelocity(player, { x: 0, y: player.velocity.y });
+      // El suelo está en y=590 y el jugador tiene radio 22.
+      if (data.direction === "up" && player.position.y >= 565 && Math.abs(player.velocity.y) < 1) {
         Body.setVelocity(player, { x: player.velocity.x, y: -6 });
       }
     });
-
-    this.onMessage("startKick", (client) => {
-      const player = this.state.players.get(client.sessionId);
-      player.kick = true;
-      this.clock.setTimeout(() => {
-        player.kick = false;
-      }, 200);
-    });
-
-    this.onMessage("kick", (client, data) => {
-      const player = this.state.players.get(client.sessionId);
-      switch (player.team) {
-        case 1:
-          if (data.modifier == 0) {
-            Body.setVelocity(this.ball, {
-              x: this.ball.velocity.x + 0,
-              y: this.ball.velocity.y - 9,
-            });
-          } else if (data.modifier == 1) {
-            Body.setVelocity(this.ball, {
-              x: this.ball.velocity.x + 3,
-              y: this.ball.velocity.y - 7,
-            });
-          } else {
-            Body.setVelocity(this.ball, {
-              x: this.ball.velocity.x + 5,
-              y: this.ball.velocity.y - 8,
-            });
-          }
-          Body.setAngularVelocity(this.ball, this.ball.angularVelocity + 0.5);
-          break;
-        case 2:
-          if (data.modifier == 0) {
-            Body.setVelocity(this.ball, {
-              x: this.ball.velocity.x + 0,
-              y: this.ball.velocity.y - 9,
-            });
-          } else if (data.modifier == 1) {
-            Body.setVelocity(this.ball, {
-              x: this.ball.velocity.x - 3,
-              y: this.ball.velocity.y - 7,
-            });
-          } else {
-            Body.setVelocity(this.ball, {
-              x: this.ball.velocity.x - 5,
-              y: this.ball.velocity.y - 8,
-            });
-          }
-          Body.setAngularVelocity(this.ball, this.ball.angularVelocity - 0.5);
+    this.onMessage("kick", (client) => {
+      if (this.paused || this.state.players.size !== 2) return;
+      const now = this.clock.elapsedTime;
+      if (now - (this.lastKick.get(client.sessionId) ?? -Infinity) < 300) return;
+      this.lastKick.set(client.sessionId, now);
+      const state = this.state.players.get(client.sessionId);
+      if (!state) return;
+      state.kick = true;
+      this.clock.setTimeout(() => { state.kick = false; }, 200);
+      const player = state.team === 1 ? this.playerOne : this.playerTwo;
+      const dx = this.ball.position.x - player.position.x;
+      const dy = this.ball.position.y - player.position.y;
+      // Sólo una patada cercana puede afectar a la pelota.
+      if (Math.hypot(dx, dy) <= 75) {
+        Sleeping.set(this.ball, false);
+        Body.setVelocity(this.ball, { x: state.team === 1 ? 7 : -7, y: -8 });
+        Body.setAngularVelocity(this.ball, state.team === 1 ? 0.5 : -0.5);
       }
     });
-
-    this.onMessage("goal", (_, player: 1 | 2) => {
-      this.state.score[player]++;
-      Body.setVelocity(this.playerOne, { x: 0, y: 0 });
-      Body.setVelocity(this.playerTwo, { x: 0, y: 0 });
-      this.engine.enabled = false;
-    });
-
-    this.onMessage("serve", (_, player: 1 | 2) => {
-      this.resetPositions();
-      this.serveBall(player);
-    });
   }
 
-  onJoin(client: Client, options: any) {
-    let player;
+  onAuth(_client: Client, options: any) {
+    return !!this.pin && options?.pin === this.pin;
+  }
 
-    if (!this.hostId) {
-      this.hostId = client.sessionId;
-      World.add(this.world, this.playerOne);
-      player = new Player(1);
-    } else {
-      World.add(this.world, this.playerTwo);
-      player = new Player(2);
-    }
-    this.state.ball = new Ball();
-    this.state.score = new Score();
+  onJoin(client: Client) {
+    const team = this.state.players.size === 0 ? 1 : 2;
+    if (team === 1) this.hostId = client.sessionId;
+    World.add(this.world, team === 1 ? this.playerOne : this.playerTwo);
+    const player = new Player(team);
+    player.x = team === 1 ? 200 : 824;
+    player.y = 550;
     this.state.players.set(client.sessionId, player);
-
-    db.prepare("UPDATE game SET active = active + 1 WHERE roomId = ?").run(
-      this.roomId
-    );
+    if (this.state.players.size === 2) {
+      this.resetPositions();
+      this.serveBall(1);
+    }
   }
 
-  onLeave(client: Client, consented: boolean) {
-    if (client.sessionId == this.hostId) {
-      this.disconnect();
-      return;
-    }
-    const player = this.state.players.get(client.sessionId);
-    World.remove(
-      this.world,
-      player.team == 1 ? this.playerOne : this.playerTwo
-    );
-    this.state.players.delete(client.sessionId);
-    db.prepare("UPDATE game SET active = active - 1 WHERE roomId = ?").run(
-      this.roomId
-    );
+  onLeave(_client: Client) {
+    // Una desconexión cierra la partida. Ambos pueden crear otra sin estado residual.
+    this.disconnect();
   }
 
   onDispose() {
-    db.prepare("DELETE FROM game WHERE roomId = ?").run(this.roomId);
+    roomsByPin.delete(this.pin);
+    Events.off(this.engine, "afterUpdate", undefined);
+    Composite.clear(this.world, false);
+    Engine.clear(this.engine);
+  }
+
+  scoreGoal(team: 1 | 2) {
+    if (this.paused) return;
+    this.paused = true;
+    this.state.score[team]++;
+    this.broadcast("goal", team);
+    this.clock.setTimeout(() => {
+      this.resetPositions();
+      this.serveBall(team);
+      this.paused = false;
+    }, 750);
   }
 
   resetPositions() {
-    Body.setPosition(this.playerOne, { x: 200, y: 550 });
-    Body.setVelocity(this.playerOne, { x: 0, y: 0 });
-
-    Body.setPosition(this.playerTwo, { x: 824, y: 550 });
-    Body.setVelocity(this.playerTwo, { x: 0, y: 0 });
-
-    Body.setPosition(this.ball, { x: 512, y: 400 });
-    Body.setVelocity(this.ball, { x: 0, y: 0 });
-    Body.setAngularVelocity(this.ball, 0);
+    for (const [body, x, y] of [
+      [this.playerOne, 200, 550], [this.playerTwo, 824, 550], [this.ball, 512, 400],
+    ] as [Body, number, number][]) {
+      Sleeping.set(body, false);
+      Body.setPosition(body, { x, y });
+      Body.setVelocity(body, { x: 0, y: 0 });
+      Body.setAngularVelocity(body, 0);
+    }
   }
 
   serveBall(from: 1 | 2) {
-    from == 1
-      ? Body.setVelocity(this.ball, { x: 4, y: -3 })
-      : Body.setVelocity(this.ball, { x: -4, y: -3 });
+    Body.setVelocity(this.ball, { x: from === 1 ? 4 : -4, y: -3 });
   }
 }

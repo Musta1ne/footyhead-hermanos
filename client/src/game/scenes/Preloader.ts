@@ -41,7 +41,7 @@ export class Preloader extends Scene {
   }
 
   create() {
-    EventBus.on("room-ready", (data) => {
+    EventBus.once("room-ready", (data: { pin: string; roomId: string }) => {
       this.scene.start("Game", data);
     });
     EventBus.emit("current-scene-ready", this);

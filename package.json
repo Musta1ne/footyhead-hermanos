@@ -5,13 +5,17 @@
   "license": "ISC",
   "main": "index.js",
   "scripts": {
-    "server": "cd server && npm run start-server",
-    "client": "cd client && npm run start-client",
-    "clean": "cd server && npm run clean-db",
-    "start": "concurrently -p \"[{name}]\" -n \"HTTP,TSX\" -c \"bgMagenta.bold,bgGreen.bold\" \"npm run server\" \"npm run client\""
+    "setup": "npm ci --include=dev && npm ci --include=dev --prefix server && npm ci --include=dev --prefix client",
+    "dev": "concurrently -k \"npm run start-server --prefix server\" \"npm run start-client --prefix client\"",
+    "build": "npm run build --prefix client && npm run build --prefix server",
+    "start": "npm start --prefix server",
+    "test": "npm test --prefix server"
   },
   "description": "",
   "devDependencies": {
     "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

@@ -1,0 +1,15 @@
+# Un único servidor mantiene las partidas y entrega la web.
+services:
+  - type: web
+    name: footyhead-hermanos
+    runtime: node
+    plan: free
+    region: virginia
+    buildCommand: npm run setup && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production

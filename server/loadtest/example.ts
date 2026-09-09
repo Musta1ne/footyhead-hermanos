@@ -1,25 +1,16 @@
-import { Client, Room } from "colyseus.js";
+import { Client } from "colyseus.js";
 import { cli, Options } from "@colyseus/loadtest";
 
+// Creá una sala en la web, sin entrar, y pasá ROOM_PIN al ejecutar loadtest.
 export async function main(options: Options) {
-    const client = new Client(options.endpoint);
-    const room: Room = await client.joinOrCreate(options.roomName, {
-        // your join options here...
-    });
-
-    console.log("joined successfully!");
-
-    room.onMessage("message-type", (payload) => {
-        // logic
-    });
-
-    room.onStateChange((state) => {
-        console.log("state change:", state);
-    });
-
-    room.onLeave((code) => {
-        console.log("left");
-    });
+  const pin = process.env.ROOM_PIN;
+  if (!pin) throw new Error("Definí ROOM_PIN con el código de una sala vacía.");
+  const endpoint = options.endpoint.replace(/^ws/, "http");
+  const response = await fetch(endpoint + "/api/rooms/" + encodeURIComponent(pin));
+  if (!response.ok) throw new Error("La sala no existe.");
+  const { roomId } = await response.json() as { roomId: string };
+  const room = await new Client(options.endpoint).joinById(roomId, { pin });
+  room.onMessage("goal", () => {});
+  room.onLeave(() => console.log("Partida cerrada"));
 }
-
 cli(main);

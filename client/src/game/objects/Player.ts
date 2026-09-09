@@ -94,9 +94,6 @@ export class Player {
   }
 
   destroy() {
-    this.body.destroy();
-    this.boot.destroy();
-    this.body.removeAllListeners();
     this.boot.world.getAllConstraints().forEach((c) => {
       if (
         c.label === `body-${this.team}-centerConstraint` ||
@@ -105,5 +102,7 @@ export class Player {
         this.boot.world.removeConstraint(c);
       }
     });
+    this.body.destroy();
+    this.boot.destroy();
   }
 }

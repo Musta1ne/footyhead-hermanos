@@ -1,6 +1,7 @@
+import { serverUrl } from "../../connection";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { Math, Scene } from "phaser";
+import { Scene } from "phaser";
 import { Client as ColyseusClient, Room } from "colyseus.js";
 
 import { CollisionCategories, PlayerNumber } from "../lib";
@@ -16,7 +17,7 @@ export class Game extends Scene {
   ball: Ball;
   room: Room;
   roomData: any;
-  client = new ColyseusClient("http://192.168.0.201:2567");
+  client = new ColyseusClient(serverUrl);
 
   constructor() {
     super("Game");
@@ -39,7 +40,7 @@ export class Game extends Scene {
     const { categoryFootball, categoryPlatform, categoryPlayer } =
       CollisionCategories;
     const shapes = this.cache.json.get("shapes");
-    const { W, A, D, space } = this.cursors;
+
 
     try {
       this.room = await this.client.joinById(this.roomData.roomId, {
@@ -47,9 +48,20 @@ export class Game extends Scene {
       });
       console.log("Joined successfully!");
     } catch (e) {
-      console.error(e);
+      this.add.text(100, 300, "No se pudo entrar: sala llena o cerrada. Volvé a crear una.", { fontSize: "22px" });
+      return;
     }
 
+    this.events.once("shutdown", () => { this.room?.leave(); this.players = {}; });
+    this.room.onLeave(() => {
+      this.room = undefined as any;
+      this.add.text(100, 270, "Partida cerrada. Volvé al inicio para crear otra.", { fontSize: "24px", backgroundColor: "#222222" }).setDepth(100);
+    });
+    const status = this.add.text(512, 100, "Esperando al segundo jugador…", { fontSize: "24px" }).setOrigin(0.5);
+    this.room.onStateChange((state: any) => {
+      status.setText(state.players.size === 2 ? "A / D: moverse · W: saltar · Espacio: patear" : "Esperando al segundo jugador…");
+    });
+    this.room.onMessage("goal", () => this.sound.play("die"));
     this.scoreText = this.add
       .text(512, 175, "0 : 0", {
         fontFamily: "Arial Black",
@@ -115,100 +127,7 @@ export class Game extends Scene {
     });
 
     this.ball = new Ball(this.matter.world, 512, 500);
-    this.ball.setOnCollide(
-      ({
-        bodyA: { label: labelA },
-        bodyB: { label: labelB, gameObject: gameObjectB },
-      }: Phaser.Types.Physics.Matter.MatterCollisionData) => {
-        // Collides with boot
-        if (labelA == "boot-1" || labelB == "boot-1") {
-          const { lastKicked } = gameObjectB.data.values;
-          if (this.time.now - lastKicked <= 25) {
-            const keyDownTime = (space.duration || space.getDuration()) / 2;
-            if (keyDownTime < 50) {
-              this.ball.setVelocity(
-                this.ball.getVelocity().x + 0,
-                this.ball.getVelocity().y - 9
-              );
-              this.room.send("kick", { modifier: 0 });
-            } else if (keyDownTime < 75) {
-              this.ball.setVelocity(
-                this.ball.getVelocity().x + 3,
-                this.ball.getVelocity().y - 7
-              );
-              this.room.send("kick", { modifier: 1 });
-            } else {
-              this.ball.setVelocity(
-                this.ball.getVelocity().x + 5,
-                this.ball.getVelocity().y - 8
-              );
-              this.room.send("kick", { modifier: 2 });
-            }
-            this.ball.setAngularVelocity(this.ball.getAngularVelocity() + 0.5);
-          } else {
-            this.ball.setVelocityX(2);
-          }
-        } else if (labelA == "boot-2" || labelB == "boot-2") {
-          const { lastKicked } = gameObjectB.data.values;
-          if (this.time.now - lastKicked <= 25) {
-            const keyDownTime = (space.duration || space.getDuration()) / 2;
-            if (keyDownTime < 50) {
-              this.ball.setVelocity(
-                this.ball.getVelocity().x + 0,
-                this.ball.getVelocity().y - 9
-              );
-              this.room.send("kick", { modifier: 0 });
-            } else if (keyDownTime < 75) {
-              this.ball.setVelocity(
-                this.ball.getVelocity().x - 3,
-                this.ball.getVelocity().y - 7
-              );
-              this.room.send("kick", { modifier: 1 });
-            } else {
-              this.ball.setVelocity(
-                this.ball.getVelocity().x - 5,
-                this.ball.getVelocity().y - 8
-              );
-              this.room.send("kick", { modifier: 2 });
-            }
-            this.ball.setAngularVelocity(this.ball.getAngularVelocity() + 0.5);
-          } else {
-            this.ball.setVelocityX(-2);
-          }
-        }
-        // Collides with player
-        if (
-          (labelA == "player-1" ||
-            labelB == "player-1" ||
-            labelA == "player-2" ||
-            labelB == "player-2") &&
-          (W.isDown || A.isDown || D.isDown)
-        ) {
-          const newVelocity = this.matter.vector.add(
-            this.ball.getVelocity(),
-            this.ball.getVelocityModifier()
-          );
-          this.ball.setVelocity(newVelocity.x, newVelocity.y);
-        }
-        // Scores Goal
-        if (labelA == "goal-sensor-1" || labelB == "goal-sensor-1") {
-          this.scoreGoal(PlayerNumber.Two);
-        } else if (labelA == "goal-sensor-2" || labelB == "goal-sensor-2") {
-          this.scoreGoal(PlayerNumber.One);
-        }
-
-        // Dead ball
-        if (labelA == "goal-sensor-top-1" || labelB == "goal-sensor-top-1") {
-          this.ball.setVelocity(4, -4);
-        } else if (
-          labelA == "goal-sensor-top-2" ||
-          labelB == "goal-sensor-top-2"
-        ) {
-          this.ball.setVelocity(-4, -4);
-        }
-        this.sound.play("ball-touch");
-      }
-    );
+    this.ball.setOnCollide(() => this.sound.play("ball-touch"));
 
     this.room.state.ball.onChange(() => {
       const ballState = this.room.state.ball;
@@ -229,36 +148,15 @@ export class Game extends Scene {
     this.sound.setMute(!!this.matter.config.debug);
   }
 
-  update(time: number, _delta: number) {
-    if (!this.room) return;
+  update(_time: number, _delta: number) {
+    if (!this.room || !this.ball) return;
+
     const { W, A, D, space } = this.cursors;
-
-    if (A.isDown) {
-      this.ball.setVelocityModifier({
-        x: -Math.FloatBetween(2, 1.5),
-        y: Math.FloatBetween(-2, -0.5),
-      });
-      this.room.send("move", { direction: "left" });
-    } else if (D.isDown) {
-      this.ball.setVelocityModifier({
-        x: Math.FloatBetween(2, 1.5),
-        y: Math.FloatBetween(-2, -0.5),
-      });
-      this.room.send("move", { direction: "right" });
-    }
-
-    for (const sessionId in this.players) {
-      const player = this.players[sessionId];
-      if (W.isDown && player.isGrounded) {
-        this.room.send("move", { direction: "up" });
-        this.sound.play("jump");
-        player.isGrounded = false;
-      }
-      if (space.isDown && space.getDuration() < 75) {
-        this.room.send("startKick");
-      }
-      this.interpolatePlayer(player);
-    }
+    // Enviar únicamente las acciones del jugador local.
+    this.room.send("move", { direction: A.isDown ? "left" : D.isDown ? "right" : "stop" });
+    if (Phaser.Input.Keyboard.JustDown(W)) this.room.send("move", { direction: "up" });
+    if (Phaser.Input.Keyboard.JustDown(space)) this.room.send("kick");
+    for (const player of Object.values(this.players)) this.interpolatePlayer(player);
     this.interpolateBall();
   }
 
@@ -266,12 +164,14 @@ export class Game extends Scene {
     const { serverX, serverY, serverVX, serverVY, serverKick } =
       player.body.data.values;
 
-    if (serverKick) {
+    if (!Number.isFinite(serverX) || !Number.isFinite(serverY)) return;
+    if (serverKick && !player.boot.getData("wasKicking")) {
       this.events.emit(`kick-${player.team}`);
       player.boot.setData("lastKicked", this.time.now);
       player.boot.setVelocity(player.team === PlayerNumber.One ? 10 : -10, -5);
     }
 
+    player.boot.setData("wasKicking", serverKick);
     player.body.setPosition(
       Phaser.Math.Linear(player.body.x, serverX, 0.2),
       Phaser.Math.Linear(player.body.y, serverY, 0.2)
@@ -286,6 +186,7 @@ export class Game extends Scene {
     if (!this.ball.data) return;
 
     const { ballX, ballY, ballVX, ballVY, ballAngle } = this.ball.data.values;
+    if (!Number.isFinite(ballX) || !Number.isFinite(ballY)) return;
     this.ball.setPosition(
       Phaser.Math.Linear(this.ball.x, ballX, 0.1),
       Phaser.Math.Linear(this.ball.y, ballY, 0.2)
@@ -299,27 +200,4 @@ export class Game extends Scene {
     );
   }
 
-  scoreGoal(playerNumber: PlayerNumber) {
-    this.room.send("goal", playerNumber);
-    this.matter.pause();
-    // this.scene.pause()
-    this.sound.play("die");
-    this.time.delayedCall(750, () => {
-      this.room.send("serve", playerNumber);
-      this.serveBall(playerNumber);
-      this.matter.resume();
-    });
-  }
-
-  serveBall(from: PlayerNumber) {
-    from == PlayerNumber.One
-      ? this.ball.setVelocity(
-          Math.FloatBetween(3, 5),
-          Math.FloatBetween(-3, -2)
-        )
-      : this.ball.setVelocity(
-          Math.FloatBetween(-5, -3),
-          Math.FloatBetween(-3, -2)
-        );
-  }
 }
