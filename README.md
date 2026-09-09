@@ -4,7 +4,7 @@ Adaptación de [azaidi4/footyhead](https://github.com/azaidi4/footyhead). Conser
 
 ## Jugar online
 
-Abrí https://footyhead-hermanos.grand-rook-5288.chatgpt.site
+Abrí https://footyhead-hermanos.elbarrilfumanchero.chatgpt.site
 
 1. Elegí **Jugar con mi hermano → Crear sala**.
 2. Copiá el enlace y mandáselo a tu hermano.
