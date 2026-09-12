@@ -18,12 +18,14 @@ export class Rooms {
     await this.db.prepare(host ? "UPDATE rooms SET offer = ? WHERE pin = ?" : "UPDATE rooms SET answer = ? WHERE pin = ?")
       .bind(description, pin).run();
   }
-  async relay(pin: string, host: boolean, packet: string) {
-    const column = host ? "host_relay" : "guest_relay";
-    // La secuencia evita que un reintento tardío reemplace un estado más nuevo.
-    await this.db.prepare(`UPDATE rooms SET relay = 1, ${column} = ?, expires = ? WHERE pin = ? AND (COALESCE(json_extract(${column}, '$.seq'), 0) < json_extract(?, '$.seq'))`)
-      .bind(packet, Date.now() + 15 * 60_000, pin, packet).run();
-    const room = await this.get(pin);
-    return JSON.parse((host ? room?.guest_relay : room?.host_relay) || "null");
+  async relay(pin: string, auth: string, packet: string) {
+    // Autenticar, guardar y leer al rival en un solo viaje a D1. Nunca cambiar
+    // el buzón del otro rol ni reemplazar un paquete por un reintento anterior.
+    return this.db.prepare(`UPDATE rooms SET relay = 1,
+      host_relay = CASE WHEN host = ? AND COALESCE(json_extract(host_relay, '$.seq'), 0) < json_extract(?, '$.seq') THEN ? ELSE host_relay END,
+      guest_relay = CASE WHEN guest = ? AND COALESCE(json_extract(guest_relay, '$.seq'), 0) < json_extract(?, '$.seq') THEN ? ELSE guest_relay END,
+      expires = ? WHERE pin = ? AND expires > ? AND (host = ? OR guest = ?)
+      RETURNING CASE WHEN host = ? THEN guest_relay ELSE host_relay END AS peer`)
+      .bind(auth, packet, packet, auth, packet, packet, Date.now() + 15 * 60_000, pin, Date.now(), auth, auth, auth).first<{ peer: string | null }>();
   }
 }

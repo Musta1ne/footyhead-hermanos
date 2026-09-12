@@ -35,21 +35,9 @@ export default {
       const match = url.pathname.match(/^\/api\/rooms\/([A-Z0-9-]+)(?:\/(join|signal|relay))?$/i);
       if (!match) return json({ message: "Ruta no encontrada." }, 404);
       const pin = match[1].replaceAll("-", "").toUpperCase();
-      const room = await store.get(pin);
-      if (!room) return json({ message: "Esta sala venció o no existe. Creá otra partida." }, 404);
-      if (!match[2] && request.method === "GET") return json({ pin, roomId: pin });
       const auth = request.headers.get("Authorization")?.replace(/^Bearer /, "") || "";
-      if (!/^[a-f0-9]{32}$/.test(auth)) return json({ message: "Falta la invitación de esta sala." }, 401);
-      const host = auth === room.host;
-      if (match[2] === "join" && request.method === "POST") {
-        if (!host && !await store.claim(pin, auth)) return json({ message: "La sala ya tiene dos jugadores. Creá otra para jugar." }, 409);
-        return json({ role: host ? "host" : "guest" });
-      }
-      if (!host && auth !== room.guest) return json({ message: "No pertenecés a esta sala." }, 403);
-      if (match[2] === "signal" && request.method === "GET") {
-        return json({ description: JSON.parse((host ? room.answer : room.offer) || "null"), relay: !!room.relay });
-      }
       if (match[2] === "relay" && request.method === "POST") {
+        if (!/^[a-f0-9]{32}$/.test(auth)) return json({ message: "Falta la invitación de esta sala." }, 401);
         const raw = await request.text();
         if (raw.length > 24000) return json({ message: "Mensaje demasiado grande." }, 413);
         let packet;
@@ -59,8 +47,22 @@ export default {
           || !Array.isArray(packet.controls) || packet.controls.length > 64
           || !packet.controls.every((c: any, i: number) => Number.isSafeInteger(c.id) && c.id > 0 && message(c.message) && (i === 0 || c.id > packet.controls[i - 1].id))
           || (packet.fast !== null && !message(packet.fast))) return json({ message: "Mensaje inválido." }, 400);
-        const peer = await store.relay(pin, host, JSON.stringify({ seq: packet.seq, ack: packet.ack, controls: packet.controls, fast: packet.fast, at: Date.now() }));
-        return json({ peer, now: Date.now() });
+        const result = await store.relay(pin, auth, JSON.stringify({ seq: packet.seq, ack: packet.ack, controls: packet.controls, fast: packet.fast, at: Date.now() }));
+        if (!result) return json({ message: "La sala venció o no pertenecés a ella. Creá otra partida." }, 403);
+        return json({ peer: JSON.parse(result.peer || "null"), now: Date.now() });
+      }
+      const room = await store.get(pin);
+      if (!room) return json({ message: "Esta sala venció o no existe. Creá otra partida." }, 404);
+      if (!match[2] && request.method === "GET") return json({ pin, roomId: pin });
+      if (!/^[a-f0-9]{32}$/.test(auth)) return json({ message: "Falta la invitación de esta sala." }, 401);
+      const host = auth === room.host;
+      if (match[2] === "join" && request.method === "POST") {
+        if (!host && !await store.claim(pin, auth)) return json({ message: "La sala ya tiene dos jugadores. Creá otra para jugar." }, 409);
+        return json({ role: host ? "host" : "guest" });
+      }
+      if (!host && auth !== room.guest) return json({ message: "No pertenecés a esta sala." }, 403);
+      if (match[2] === "signal" && request.method === "GET") {
+        return json({ description: JSON.parse((host ? room.answer : room.offer) || "null"), relay: !!room.relay });
       }
       if (match[2] === "signal" && request.method === "POST") {
         if (Number(request.headers.get("content-length")) > 32000) return json({ message: "Mensaje demasiado grande." }, 413);

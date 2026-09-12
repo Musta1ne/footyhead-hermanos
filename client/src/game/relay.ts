@@ -56,7 +56,7 @@ export class Relay {
       if ((this.ready && performance.now() - lastPeer > 12_000) || (!this.ready && performance.now() > deadline)) {
         this.failed("Tu hermano no está conectado. Creá una nueva partida."); this.close(); return;
       }
-      await new Promise(resolve => setTimeout(resolve, Math.max(this.ready ? 60 : 500, (this.ready ? 100 : 1000) - (performance.now() - start))));
+      await new Promise(resolve => setTimeout(resolve, Math.max(0, (this.ready ? 100 : 1000) - (performance.now() - start))));
     }
   }
   close() { this.stopped = true; this.controls = []; this.fast = null; }
