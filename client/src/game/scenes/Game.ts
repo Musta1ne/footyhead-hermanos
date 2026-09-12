@@ -18,6 +18,7 @@ export class Game extends Scene {
   private confirmedFinished = false;
   private status: Phaser.GameObjects.Text;
   private pingText: Phaser.GameObjects.Text;
+  private networkText: Phaser.GameObjects.Text;
   private local = emptyInput();
   private remote = emptyInput();
   private pending: Input[] = [];
@@ -52,6 +53,7 @@ export class Game extends Scene {
     });
     this.status = this.add.text(512, 90, "Preparando conexión…", { fontFamily: "Arial", fontSize: "22px", align: "center", wordWrap: { width: 900 } }).setOrigin(0.5);
     this.pingText = this.add.text(512, 135, "", { fontFamily: "Arial", fontSize: "16px" }).setOrigin(0.5);
+    this.networkText = this.add.text(512, 690, "", { fontFamily: "Arial", fontSize: "16px", align: "center", wordWrap: { width: 900 } }).setOrigin(0.5);
     this.add.text(512, 650, `Sala ${this.pin} · Mantené esta pestaña abierta durante la partida`, { fontFamily: "Arial", fontSize: "18px" }).setOrigin(0.5);
     this.peer = new Peer(this.pin, text => this.status.setText(text), text => {
       this.started = false; this.local.direction = 0; this.status.setText(text);
@@ -123,7 +125,10 @@ export class Game extends Scene {
     if (this.peer.ready && this.started) {
       const result = this.sim.winner === null ? "Empate" : `Ganó el jugador ${this.sim.winner === 1 ? "izquierdo" : "derecho"}`;
       this.status.setText(this.confirmedFinished ? `¡Terminó el partido! ${result}` : paused ? "Partida pausada: los dos deben volver a la pestaña del juego." : CONTROLS);
-      this.pingText.setText(`Conexión ${this.peer.route}: ${Math.round(this.peer.rtt)} ms · Jugás a la ${this.peer.host ? "izquierda" : "derecha"}`);
+      this.pingText.setText(`Conexión ${this.peer.route}: ${this.peer.rtt ? Math.round(this.peer.rtt) + " ms" : "midiendo…"} · Jugás a la ${this.peer.host ? "izquierda" : "derecha"}`);
+      this.networkText.setText(this.peer.route === "por servidor"
+        ? `Respaldo HTTPS: puede tener mucha demora. ${this.peer.networkNote || "WebRTC no logró conectar."}`
+        : this.peer.rtt > 200 ? "Demora alta: prueben cable de red y pausen las descargas en ambas casas." : "");
     }
     this.scoreText.setText(this.confirmedScore.join(" : "));
     const seconds = Math.ceil(this.sim.remainingTicks / 60);

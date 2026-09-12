@@ -7,6 +7,8 @@ export const rooms = sqliteTable("rooms", {
   guest: text("guest"),
   offer: text("offer"),
   answer: text("answer"),
+  hostIce: text("host_ice"),
+  guestIce: text("guest_ice"),
   relay: integer("relay").notNull().default(0),
   hostRelay: text("host_relay"),
   guestRelay: text("guest_relay"),

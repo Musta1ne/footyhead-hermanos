@@ -1,5 +1,6 @@
 import { Rooms } from "./rooms";
-export type Env = { DB: D1Database; ASSETS: Fetcher; ICE_SERVERS_JSON?: string };
+import { iceConfig, type IceEnv } from "./ice";
+export type Env = { DB: D1Database; ASSETS: Fetcher } & IceEnv;
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 const token = () => crypto.randomUUID().replaceAll("-", "");
 
@@ -32,7 +33,7 @@ export default {
         await store.create(pin, hostToken);
         return json({ pin, roomId: pin, hostToken }, 201);
       }
-      const match = url.pathname.match(/^\/api\/rooms\/([A-Z0-9-]+)(?:\/(join|signal|relay))?$/i);
+      const match = url.pathname.match(/^\/api\/rooms\/([A-Z0-9-]+)(?:\/(join|signal|relay|candidates|ice))?$/i);
       if (!match) return json({ message: "Ruta no encontrada." }, 404);
       const pin = match[1].replaceAll("-", "").toUpperCase();
       const auth = request.headers.get("Authorization")?.replace(/^Bearer /, "") || "";
@@ -61,8 +62,21 @@ export default {
         return json({ role: host ? "host" : "guest" });
       }
       if (!host && auth !== room.guest) return json({ message: "No pertenecés a esta sala." }, 403);
+      if (match[2] === "ice" && request.method === "GET") return json(await iceConfig(env));
+      if (match[2] === "candidates" && request.method === "POST") {
+        const raw = await request.text();
+        if (raw.length > 32000) return json({ message: "Mensaje demasiado grande." }, 413);
+        let candidates;
+        try { ({ candidates } = JSON.parse(raw)); } catch { return json({ message: "Candidatos inválidos." }, 400); }
+        if (!Array.isArray(candidates) || candidates.length > 64 || !candidates.every(c => c && typeof c.candidate === "string"
+          && c.candidate.length < 2048 && (c.sdpMid === null || typeof c.sdpMid === "string")
+          && (c.sdpMLineIndex === null || (Number.isInteger(c.sdpMLineIndex) && c.sdpMLineIndex >= 0)))) return json({ message: "Candidatos inválidos." }, 400);
+        await store.candidates(pin, host, JSON.stringify(candidates));
+        return json({ ok: true });
+      }
       if (match[2] === "signal" && request.method === "GET") {
-        return json({ description: JSON.parse((host ? room.answer : room.offer) || "null"), relay: !!room.relay });
+        return json({ description: JSON.parse((host ? room.answer : room.offer) || "null"), relay: !!room.relay,
+          candidates: JSON.parse((host ? room.guest_ice : room.host_ice) || "[]") });
       }
       if (match[2] === "signal" && request.method === "POST") {
         if (Number(request.headers.get("content-length")) > 32000) return json({ message: "Mensaje demasiado grande." }, 413);

@@ -8,7 +8,7 @@ Abrí https://footyhead-hermanos.elbarrilfumanchero.chatgpt.site
 
 1. Elegí **Jugar con mi hermano → Crear sala**.
 2. Copiá el enlace y mandáselo a tu hermano.
-3. Tocá **Entrar a jugar** desde la misma pestaña donde creaste la sala. Sos el jugador izquierdo y tu navegador lleva la partida.
+3. Tocá **Entrar a jugar** con el mismo navegador donde creaste la sala. Sos el jugador izquierdo y tu navegador lleva la partida. Se conserva tu lugar aunque abras el enlace en otra pestaña; sólo puede haber una pestaña activa de esa sala.
 4. Tu hermano abre el enlace en su computadora y juega a la derecha. La partida comienza al conectarse.
 
 Ambos usan **← y → para moverse, ↑ para saltar y Espacio para patear**. Hacé clic en el juego si las teclas no responden. No se necesita cámara ni micrófono.
@@ -23,7 +23,7 @@ El alojamiento entrega la página e intercambia la oferta inicial de WebRTC. Si 
 
 El creador calcula la física oficial. El invitado predice su movimiento y lo ajusta a los estados confirmados. Los gráficos sólo dibujan esa simulación: no hay dos motores distintos empujando a los personajes.
 
-No necesitan abrir puertos, cambiar el router ni contratar TURN. En redes restrictivas verán **Conexión por servidor**: puede tener más demora que una conexión directa. Después de actualizar, ambos deben recargar y crear una sala nueva. Más detalles en [ONLINE.md](ONLINE.md).
+La conexión directa no necesita contratar TURN. En redes restrictivas, un TURN cercano permite conservar WebRTC; sin uno disponible verán **Conexión por servidor**, el respaldo HTTPS que puede tener mucha demora. El juego avisa si falta TURN. Cambiar sólo el alojamiento de la página no reduce el ping de una partida WebRTC. Después de actualizar, ambos deben recargar y crear una sala nueva. Más detalles y opciones para Argentina en [ONLINE.md](ONLINE.md).
 
 ## Ejecutar en tu computadora
 

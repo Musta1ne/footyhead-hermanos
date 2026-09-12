@@ -15,6 +15,13 @@
       "when": 1789220630108,
       "tag": "0001_sleepy_molecule_man",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789223479140,
+      "tag": "0002_tiny_thanos",
+      "breakpoints": true
     }
   ]
 }

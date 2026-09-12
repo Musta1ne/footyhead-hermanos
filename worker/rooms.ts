@@ -1,4 +1,4 @@
-type Room = { pin: string; host: string; guest: string | null; offer: string | null; answer: string | null; expires: number; relay: number; host_relay: string | null; guest_relay: string | null };
+type Room = { pin: string; host: string; guest: string | null; offer: string | null; answer: string | null; host_ice: string | null; guest_ice: string | null; expires: number; relay: number; host_relay: string | null; guest_relay: string | null };
 export class Rooms {
   constructor(private db: D1Database) {}
   async create(pin: string, host: string) {
@@ -17,6 +17,12 @@ export class Rooms {
     // Los nombres de columna son constantes; todos los datos externos se enlazan.
     await this.db.prepare(host ? "UPDATE rooms SET offer = ? WHERE pin = ?" : "UPDATE rooms SET answer = ? WHERE pin = ?")
       .bind(description, pin).run();
+  }
+  async candidates(pin: string, host: boolean, candidates: string) {
+    const column = host ? "host_ice" : "guest_ice";
+    // Listas acumulativas: un reintento atrasado no borra candidatos nuevos.
+    await this.db.prepare(`UPDATE rooms SET ${column} = ? WHERE pin = ? AND COALESCE(json_array_length(${column}), 0) < json_array_length(?)`)
+      .bind(candidates, pin, candidates).run();
   }
   async relay(pin: string, auth: string, packet: string) {
     // Autenticar, guardar y leer al rival en un solo viaje a D1. Nunca cambiar

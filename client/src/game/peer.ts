@@ -1,4 +1,5 @@
 import { Relay } from "./relay";
+import { roomIdentity } from "./identity";
 // Prefiere WebRTC; HTTPS permite jugar cuando la red bloquea los candidatos ICE.
 export class Peer {
   pc?: RTCPeerConnection;
@@ -9,10 +10,17 @@ export class Peer {
   closed = false;
   rtt = 0;
   route = "directa";
+  turnAvailable = false;
+  networkNote = "";
+  private localCandidates: RTCIceCandidateInit[] = [];
+  private sentCandidates = 0;
+  private receivedCandidates = 0;
+  private unlock?: () => void;
   private abort = new AbortController();
   private pingTimer?: ReturnType<typeof setInterval>;
   private lastHeard = performance.now();
   private auth: string;
+  private identityError = "";
   private relay?: Relay;
   private joined = false;
   private directFailed = false;
@@ -20,8 +28,9 @@ export class Peer {
   onReady: () => void = () => {};
 
   constructor(private pin: string, private status: (text: string) => void, private failed: (text: string) => void) {
-    this.auth = sessionStorage.getItem(`room:${pin}`) || crypto.randomUUID().replaceAll("-", "");
-    sessionStorage.setItem(`room:${pin}`, this.auth);
+    this.auth = "";
+    try { this.auth = roomIdentity(pin); }
+    catch (error) { this.identityError = error instanceof Error ? error.message : "No se pudo guardar la sala."; }
   }
 
   private async api(path: string, method = "GET", body?: unknown) {
@@ -37,14 +46,29 @@ export class Peer {
 
   async connect() {
     try {
+      if (this.identityError) throw new Error(this.identityError);
+      // Evita que dos pestañas del creador sobrescriban la misma oferta.
+      if (globalThis.navigator?.locks) {
+        const acquired = await new Promise<boolean>((resolve, reject) => {
+          void navigator.locks.request(`footyhead:${this.pin}`, { ifAvailable: true }, async lock => {
+            if (!lock || this.closed) { resolve(false); return; }
+            await new Promise<void>(release => { this.unlock = release; resolve(true); });
+          }).catch(reject);
+        });
+        if (this.closed) return;
+        if (!acquired) throw new Error("Ya tenés esta sala abierta en otra pestaña. Volvé a esa pestaña o cerrala antes de entrar acá.");
+      }
       this.host = (await this.api("join", "POST")).role === "host";
       this.joined = true;
       if (!globalThis.RTCPeerConnection) { this.startRelay(); return; }
-      const configResponse = await fetch("/api/config", { signal: AbortSignal.any([this.abort.signal, AbortSignal.timeout(10_000)]) });
-      if (!configResponse.ok) throw new Error("No se pudo preparar la conexión.");
-      const config = await configResponse.json();
+      const config = await this.api("ice");
       if (this.closed) return;
-      const pc = this.pc = new RTCPeerConnection({ iceServers: config.iceServers });
+      this.turnAvailable = !!config.turnAvailable;
+      this.networkNote = config.turnWarning || (this.turnAvailable ? "" : "TURN no está configurado.");
+      const pc = this.pc = new RTCPeerConnection({ iceServers: config.iceServers, iceTransportPolicy: "all" });
+      pc.onicecandidate = event => {
+        if (event.candidate && this.localCandidates.length < 64) this.localCandidates.push(event.candidate.toJSON());
+      };
       pc.onconnectionstatechange = () => {
         if (pc.connectionState === "failed") {
           if (this.ready) this.fail("Se interrumpió la partida. Creá otra sala para reconectar.");
@@ -63,27 +87,31 @@ export class Peer {
         this.status("Sos el jugador derecho. Esperando que el creador entre…");
       }
       const deadline = performance.now() + 10 * 60_000;
-      while (!this.closed && !pc.remoteDescription) {
-        const { description, relay } = await this.api("signal");
+      let connectionDeadline = Infinity;
+      while (!this.closed && !this.ready) {
+        if (this.localCandidates.length > this.sentCandidates) {
+          const candidates = [...this.localCandidates];
+          await this.api("candidates", "POST", { candidates });
+          this.sentCandidates = candidates.length;
+        }
+        const { description, relay, candidates = [] } = await this.api("signal");
+        if (this.ready || this.closed) break;
         if (relay || this.directFailed) { this.startRelay(); return; }
-        if (description) {
+        if (description && !pc.remoteDescription) {
           await pc.setRemoteDescription(description);
           if (!this.host) await this.publish(await pc.createAnswer());
-          break;
+          connectionDeadline = performance.now() + 20_000;
+          this.status("Buscando la mejor conexión con tu hermano…");
         }
+        if (pc.remoteDescription) {
+          for (; this.receivedCandidates < candidates.length; this.receivedCandidates++) {
+            await pc.addIceCandidate(candidates[this.receivedCandidates]);
+          }
+        }
+        if (performance.now() > connectionDeadline) { this.startRelay(); return; }
         if (performance.now() > deadline) throw new Error("La espera terminó. Creá otra sala para jugar.");
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, pc.remoteDescription ? 250 : 750));
       }
-      if (this.closed) return;
-      this.status("Conectando directamente con tu hermano…");
-      const connectionDeadline = performance.now() + 8_000;
-      while (!this.ready && !this.closed && performance.now() < connectionDeadline) {
-        const { relay } = await this.api("signal");
-        if (this.ready) break;
-        if (relay || this.directFailed) { this.startRelay(); return; }
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-      if (!this.ready && !this.closed) this.startRelay();
     } catch (error) {
       if (!this.closed && !this.ready) {
         if (this.joined) this.startRelay();
@@ -95,12 +123,7 @@ export class Peer {
   private async publish(description: RTCSessionDescriptionInit) {
     const pc = this.pc!;
     await pc.setLocalDescription(description);
-    // Enviar todos los candidatos juntos: evita depender del alojamiento durante el juego.
-    const deadline = performance.now() + 15_000;
-    while (pc.iceGatheringState !== "complete" && !this.closed) {
-      if (performance.now() > deadline) throw new Error("La red no terminó de preparar la conexión. Intentá otra vez.");
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
+    // Trickle ICE: una búsqueda STUN/TURN lenta no bloquea las rutas ya disponibles.
     if (!this.closed && pc.localDescription) await this.api("signal", "POST", { type: pc.localDescription.type, sdp: pc.localDescription.sdp });
   }
 
@@ -128,7 +151,7 @@ export class Peer {
   private startRelay() {
     if (this.closed || this.relay || this.ready) return;
     this.route = "por servidor";
-    this.status("Conectando por servidor. Esperando a tu hermano…");
+    this.status("Conectando por respaldo HTTPS (más demora). Esperando a tu hermano…");
     this.relay = new Relay(packet => this.api("relay", "POST", packet), () => this.markReady(), message => this.receive(message), text => this.fail(text));
     if (this.pc) this.pc.onconnectionstatechange = null;
     this.fast?.close(); this.control?.close(); this.pc?.close();
@@ -143,6 +166,7 @@ export class Peer {
     this.pingTimer = setInterval(() => {
       if (performance.now() - this.lastHeard > 12_000) { this.fail("Tu hermano se desconectó. Creá una nueva partida."); return; }
       this.send({ type: "ping", at: performance.now() }, true);
+      if (!this.relay) void this.inspectRoute().catch(() => {});
     }, 2000);
   }
 
@@ -168,7 +192,7 @@ export class Peer {
     if (this.relay) { this.relay.send(message as Record<string, unknown>, reliable); return; }
     const channel = reliable ? this.control : this.fast;
     // No acumular estados viejos si la red se congestiona.
-    if (!this.closed && channel?.readyState === "open" && channel.bufferedAmount < 64_000) {
+    if (!this.closed && channel?.readyState === "open" && (reliable ? channel.bufferedAmount < 64_000 : channel.bufferedAmount === 0)) {
       try { channel.send(JSON.stringify(message)); } catch { /* El cierre lo informa onclose. */ }
     }
   }
@@ -177,6 +201,7 @@ export class Peer {
     if (this.closed) return;
     this.closed = true; this.ready = false;
     this.abort.abort(); clearInterval(this.pingTimer);
+    this.unlock?.(); this.unlock = undefined;
     this.relay?.close();
     this.fast?.close(); this.control?.close(); this.pc?.close();
   }

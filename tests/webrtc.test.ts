@@ -11,6 +11,7 @@ test("dos Peer reales abren ambos canales y juegan aunque se apague la señaliza
   const hostToken = "1".repeat(32);
   storage.set("room:TEST", hostToken);
   let guestToken = "", offer: unknown = null, answer: unknown = null;
+  const candidates: any[][] = [[], []];
   let signalingCalls = 0, signalingOff = false;
   Object.defineProperty(globalThis, "sessionStorage", { configurable: true, value: { getItem: (k: string) => storage.get(k), setItem: (k: string, v: string) => storage.set(k, v) } });
   // Werift implementa WebRTC (ICE + DTLS + SCTP) con sockets reales, sin abrir una UI.
@@ -20,19 +21,27 @@ test("dos Peer reales abren ambos canales y juegan aunque se apague la señaliza
   globalThis.fetch = async (url, options) => {
     signalingCalls++;
     if (signalingOff) throw new Error("Alojamiento apagado durante la partida");
-    if (String(url) === "/api/config") return Response.json({ iceServers: [] });
+    if (String(url).endsWith("/ice")) return Response.json({ iceServers: [] });
     const auth = new Headers(options?.headers).get("Authorization")?.slice(7);
     const host = auth === hostToken;
+    if (String(url).endsWith("/candidates")) {
+      candidates[host ? 0 : 1] = JSON.parse(String(options?.body)).candidates;
+      return Response.json({ ok: true });
+    }
     if (String(url).endsWith("/join")) {
       if (!host && guestToken && guestToken !== auth) return Response.json({ message: "Sala llena" }, { status: 409 });
       if (!host) guestToken = auth!;
       return Response.json({ role: host ? "host" : "guest" });
     }
     if (options?.method === "POST") {
-      if (host) offer = JSON.parse(String(options.body)); else answer = JSON.parse(String(options.body));
+      const description = JSON.parse(String(options.body));
+      // Obliga a negociar con los candidatos enviados aparte: no basta con que
+      // Werift (a diferencia de un navegador) haya terminado de reunirlos antes.
+      description.sdp = description.sdp.replace(/^a=(?:candidate:.*|end-of-candidates)\r?\n/gm, "");
+      if (host) offer = description; else answer = description;
       return Response.json({ ok: true });
     }
-    return Response.json({ description: host ? answer : offer });
+    return Response.json({ description: host ? answer : offer, candidates: candidates[host ? 1 : 0] });
   };
   const errors: string[] = [];
   const host = new Peer("TEST", text => console.log("host:", text), error => { errors.push(error); console.log("host error:", error); });
@@ -43,6 +52,7 @@ test("dos Peer reales abren ambos canales y juegan aunque se apague la señaliza
     await Promise.all([host.connect(), guest.connect()]);
     assert.deepEqual(errors, []);
     assert.ok(host.ready && guest.ready);
+    assert.ok(candidates.every(list => list.length > 0), "ambos enviaron candidatos por trickle ICE");
     assert.equal(host.fast?.ordered, false);
     assert.equal(host.fast?.maxRetransmits, 0);
     assert.equal(host.control?.ordered, true);

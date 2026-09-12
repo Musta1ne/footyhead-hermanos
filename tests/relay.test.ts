@@ -33,7 +33,7 @@ test("WebRTC bloqueado: ambos usan HTTPS, reintentan sin duplicar controles y de
   const descriptions: any[] = [null, null];
   let dropResponse = false, exchanges = 0;
   globalThis.fetch = async (url, options) => {
-    if (String(url) === "/api/config") return Response.json({ iceServers: [] });
+    if (String(url).endsWith("/ice")) return Response.json({ iceServers: [] });
     const side = new Headers(options?.headers).get("Authorization") === `Bearer ${"1".repeat(32)}` ? 0 : 1;
     if (String(url).endsWith("/join")) return Response.json({ role: side === 0 ? "host" : "guest" });
     if (String(url).endsWith("/signal")) {
