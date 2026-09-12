@@ -27,7 +27,7 @@ function Home() {
       <Title>Footy Head</Title>
       <Border>{players}</Border>
       <Link to="play">
-        <Button>Jugar con mi hermano</Button>
+        <Button>Jugar online · 2 jugadores</Button>
       </Link>
     </>
   );

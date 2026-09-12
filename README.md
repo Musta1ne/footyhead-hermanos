@@ -4,12 +4,12 @@ Adaptación de [azaidi4/footyhead](https://github.com/azaidi4/footyhead). Conser
 
 ## Jugar online
 
-Abrí https://footyhead-hermanos.elbarrilfumanchero.chatgpt.site
+Abrí [Footy Head online](https://footyhead-hermanos.elbarrilfumanchero.chatgpt.site).
 
-1. Elegí **Jugar con mi hermano → Crear sala**.
-2. Copiá el enlace y mandáselo a tu hermano.
+1. Elegí **Jugar online · 2 jugadores → Crear sala**.
+2. Copiá el enlace y compartilo con otra persona.
 3. Tocá **Entrar a jugar** con el mismo navegador donde creaste la sala. Sos el jugador izquierdo y tu navegador lleva la partida. Se conserva tu lugar aunque abras el enlace en otra pestaña; sólo puede haber una pestaña activa de esa sala.
-4. Tu hermano abre el enlace en su computadora y juega a la derecha. La partida comienza al conectarse.
+4. La persona invitada abre el enlace en su computadora y juega a la derecha. La partida comienza al conectarse.
 
 Ambos usan **← y → para moverse, ↑ para saltar y Espacio para patear**. Hacé clic en el juego si las teclas no responden. No se necesita cámara ni micrófono.
 
@@ -41,7 +41,7 @@ Abrí http://localhost:8080. Para editar con actualización automática:
 npm run dev
 ```
 
-También usa http://localhost:8080. Para probar dos jugadores localmente usá dos ventanas visibles; cambiar a otra pestaña pausa el juego. `localhost` de tu computadora no es un enlace que pueda abrir tu hermano desde su casa.
+También usa http://localhost:8080. Para probar dos jugadores localmente usá dos ventanas visibles; cambiar a otra pestaña pausa el juego. `localhost` de tu computadora no es un enlace que pueda abrir otra persona desde otra computadora.
 
 ## Cambiar el código
 
@@ -56,5 +56,5 @@ Las pruebas cubren física, goles, privacidad de las salas, dos conexiones WebRT
 
 ## Créditos
 
-Código y recursos de partida: [Ahmad Zaidi / azaidi4](https://github.com/azaidi4/footyhead). Adaptación para uso personal entre hermanos. Los recursos visuales originales se conservan; esta adaptación no acredita propiedad sobre ellos.
+Código y recursos de partida: [Ahmad Zaidi / azaidi4](https://github.com/azaidi4/footyhead). Adaptación para partidas multijugador online de dos personas. Los recursos visuales originales se conservan; esta adaptación no acredita propiedad sobre ellos.
 

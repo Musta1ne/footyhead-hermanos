@@ -33,13 +33,13 @@ El endpoint autenticado `/api/rooms/PIN/ice` solicita credenciales de dos horas 
 
 Para otro proveedor o un coturn propio, `ICE_SERVERS_JSON` acepta una lista estándar con `urls`, `username` y `credential`. Se suma a los STUN predeterminados para no deshabilitar accidentalmente la conexión directa. Las credenciales ICE que usa el navegador son visibles para el jugador: usar credenciales temporales o una cuenta de relay limitada, nunca una clave administrativa. No guardar secretos en Git. El endpoint anterior `/api/config` se mantiene para clientes antiguos; nunca emite la clave permanente de Cloudflare.
 
-## Opciones para San Francisco y Córdoba capital (Argentina)
+## Elegir una conexión según la ubicación de los jugadores
 
-Primero prueben una sala nueva con ambos navegadores actualizados y miren la ruta y el ping. Un valor de 1300 ms no se justifica sólo por la separación geográfica: faltan mediciones de los proveedores, congestión y del camino efectivamente elegido.
+Primero prueben una sala nueva con ambos navegadores actualizados y miren la ruta y el ping. Si la demora es alta, revisen los proveedores, la congestión y el camino efectivamente elegido; la separación geográfica por sí sola no explica todos los problemas de conexión.
 
-Si WebRTC directo no atraviesa los NAT, las opciones son un TURN gestionado cercano o coturn en un VPS sudamericano. Vultr ofrece ubicaciones en [São Paulo](https://blogs.vultr.com/Ol-Brasil-Vultrs-20th-Cloud-Location-is-in-So-Paulo) y [Santiago](https://blogs.vultr.com/Vultr-announces-new-cloud-data-center-location-in-Santiago-Chile). Hay que comparar desde ambas casas antes de contratar: el recorrido real puede ser distinto de la cercanía en el mapa. Coturn conserva el juego actual; un servidor autoritativo de juego por WebSocket en esa región requeriría otra implementación y alojamiento persistente.
+Si WebRTC directo no atraviesa los NAT, las opciones son un TURN gestionado cercano o coturn en un VPS cercano a ambos jugadores. Para jugadores en Sudamérica, por ejemplo, Vultr ofrece ubicaciones en [São Paulo](https://blogs.vultr.com/Ol-Brasil-Vultrs-20th-Cloud-Location-is-in-So-Paulo) y [Santiago](https://blogs.vultr.com/Vultr-announces-new-cloud-data-center-location-in-Santiago-Chile). Hay que comparar desde ambas casas antes de contratar: el recorrido real puede ser distinto de la cercanía en el mapa. Coturn conserva el juego actual; un servidor autoritativo de juego por WebSocket en esa región requeriría otra implementación y alojamiento persistente.
 
-Mover únicamente el HTML a Sudamérica no arregla el ping WebRTC. Para descartar congestión, prueben por cable, sin VPN ni descargas, y con la pestaña visible. La decisión entre conexión directa, TURN o servidor debe basarse en mediciones entre ambos jugadores.
+Mover únicamente el HTML a una región cercana no arregla el ping WebRTC. Para descartar congestión, prueben por cable, sin VPN ni descargas, y con la pestaña visible. La decisión entre conexión directa, TURN o servidor debe basarse en mediciones entre ambos jugadores.
 
 ## Publicar y verificar
 

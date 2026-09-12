@@ -28,7 +28,7 @@ function Play() {
           </div>
         ) : null}
       </div>
-      <p>Copiá el enlace y mandáselo a tu hermano. Vos jugás a la izquierda y él a la derecha. Entrá con el mismo navegador donde creaste la sala y mantené una sola pestaña del juego abierta.</p>
+      <p>Copiá el enlace y compartilo con otra persona. Vos jugás a la izquierda y la persona invitada a la derecha. Entrá con el mismo navegador donde creaste la sala y mantené una sola pestaña del juego abierta.</p>
       <div style={{ display: "flex" }}>
         <Link to="../">
           <Button>← Volver</Button>

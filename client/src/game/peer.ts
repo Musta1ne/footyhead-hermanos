@@ -81,7 +81,7 @@ export class Peer {
         this.attach(pc.createDataChannel("control"));
         this.status("Preparando sala…");
         await this.publish(await pc.createOffer());
-        this.status("Sos el jugador izquierdo. Esperando a tu hermano…");
+        this.status("Sos el jugador izquierdo. Esperando al otro jugador…");
       } else {
         pc.ondatachannel = event => this.attach(event.channel);
         this.status("Sos el jugador derecho. Esperando que el creador entre…");
@@ -101,7 +101,7 @@ export class Peer {
           await pc.setRemoteDescription(description);
           if (!this.host) await this.publish(await pc.createAnswer());
           connectionDeadline = performance.now() + 20_000;
-          this.status("Buscando la mejor conexión con tu hermano…");
+          this.status("Buscando la mejor conexión con el otro jugador…");
         }
         if (pc.remoteDescription) {
           for (; this.receivedCandidates < candidates.length; this.receivedCandidates++) {
@@ -151,7 +151,7 @@ export class Peer {
   private startRelay() {
     if (this.closed || this.relay || this.ready) return;
     this.route = "por servidor";
-    this.status("Conectando por respaldo HTTPS (más demora). Esperando a tu hermano…");
+    this.status("Conectando por respaldo HTTPS (más demora). Esperando al otro jugador…");
     this.relay = new Relay(packet => this.api("relay", "POST", packet), () => this.markReady(), message => this.receive(message), text => this.fail(text));
     if (this.pc) this.pc.onconnectionstatechange = null;
     this.fast?.close(); this.control?.close(); this.pc?.close();
@@ -164,7 +164,7 @@ export class Peer {
     this.lastHeard = performance.now();
     this.onReady();
     this.pingTimer = setInterval(() => {
-      if (performance.now() - this.lastHeard > 12_000) { this.fail("Tu hermano se desconectó. Creá una nueva partida."); return; }
+      if (performance.now() - this.lastHeard > 12_000) { this.fail("El otro jugador se desconectó. Creá una nueva partida."); return; }
       this.send({ type: "ping", at: performance.now() }, true);
       if (!this.relay) void this.inspectRoute().catch(() => {});
     }, 2000);
