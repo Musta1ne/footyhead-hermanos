@@ -7,6 +7,7 @@
 | `client/src/game/simulation.ts` | Reglas, velocidades, tamaño del campo, salto, patadas y goles. `RULES` agrupa las constantes de jugabilidad. |
 | `client/src/game/scenes/Game.ts` | Flechas/Espacio, dibujo de los personajes, marcador, predicción y correcciones del invitado. |
 | `client/src/game/peer.ts` | Conectar los dos navegadores, medir ping, detectar desconexión y enviar paquetes. |
+| `client/src/game/relay.ts` | Respaldo HTTPS: último estado, mensajes fiables, confirmaciones y reintentos. |
 | `worker/index.ts` | API de salas, configuración ICE y entrega de la página. No ejecuta física. |
 | `worker/rooms.ts` | Consultas a las salas temporales. |
 | `db/schema.ts` | Estructura de esa base; `drizzle/` contiene sus migraciones. |
@@ -35,4 +36,4 @@ Los servidores STUN predeterminados están en `/api/config` del Worker. Se puede
 
 La sala tiene dos lugares; no hay espectadores, cuentas, reconexión ni cambio de anfitrión. Recargar requiere una sala nueva. El creador debe mantener el navegador abierto y visible. Es un juego entre personas de confianza, no un sistema competitivo con protección contra trampas.
 
-La predicción reduce la espera del teclado, pero no elimina la latencia física de internet ni todas las correcciones de la pelota al chocar. WebRTC puede necesitar TURN en redes restrictivas.
+La predicción reduce la espera del teclado, pero no elimina la latencia física de internet ni todas las correcciones de la pelota al chocar. En redes restrictivas el respaldo HTTPS evita exigir TURN, a costa de más latencia y solicitudes al alojamiento.

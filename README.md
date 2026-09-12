@@ -13,17 +13,17 @@ Abrí https://footyhead-hermanos.elbarrilfumanchero.chatgpt.site
 
 Ambos usan **← y → para moverse, ↑ para saltar y Espacio para patear**. Hacé clic en el juego si las teclas no responden. No se necesita cámara ni micrófono.
 
-Mantengan el juego visible: cambiar de pestaña pausa la partida para los dos. Si alguno cierra o recarga, creen otra sala. Las invitaciones vencen a los 15 minutos; una partida ya conectada continúa sin usar la sala del alojamiento.
+Mantengan el juego visible: cambiar de pestaña pausa la partida para los dos. Si alguno cierra o recarga, creen otra sala. Las invitaciones sin uso vencen a los 15 minutos; las partidas por servidor mantienen su sala activa mientras juegan.
 
 El indicador muestra la ida y vuelta entre ustedes. No es el tiempo de respuesta del teclado: el movimiento se calcula localmente. No hay un ping prometido; depende de la ruta entre sus conexiones.
 
 ## Cómo se conecta
 
-El alojamiento entrega la página e intercambia la oferta inicial de WebRTC. Después, teclas, pelota y marcador viajan entre los dos navegadores. Render y Colyseus ya no forman parte del juego.
+El alojamiento entrega la página e intercambia la oferta inicial de WebRTC. Si la conexión directa funciona, teclas, pelota y marcador viajan entre los dos navegadores. Si no conecta, el juego cambia automáticamente a un respaldo HTTPS por el mismo alojamiento. Render y Colyseus ya no forman parte del juego.
 
 El creador calcula la física oficial. El invitado predice su movimiento y lo ajusta a los estados confirmados. Los gráficos sólo dibujan esa simulación: no hay dos motores distintos empujando a los personajes.
 
-Algunas redes bloquean la conexión directa y requieren TURN. Esta instalación usa STUN y no incluye un servicio TURN contratado. Si aparece ese mensaje desde sus dos casas, habrá que configurar un proveedor TURN; no se pide abrir puertos ni cambiar el router. Más detalles en [ONLINE.md](ONLINE.md).
+No necesitan abrir puertos, cambiar el router ni contratar TURN. En redes restrictivas verán **Conexión por servidor**: puede tener más demora que una conexión directa. Después de actualizar, ambos deben recargar y crear una sala nueva. Más detalles en [ONLINE.md](ONLINE.md).
 
 ## Ejecutar en tu computadora
 
@@ -52,7 +52,7 @@ npm test
 npm run build
 ```
 
-Las pruebas cubren física, goles, privacidad de las salas y dos conexiones WebRTC reales sin navegador. El ensayo local de WebRTC no equivale a probar las redes de dos casas.
+Las pruebas cubren física, goles, privacidad de las salas, dos conexiones WebRTC reales y el respaldo HTTPS con WebRTC bloqueado y respuestas perdidas. Los ensayos locales no equivalen a medir las redes de dos casas.
 
 ## Créditos
 

@@ -17,7 +17,7 @@ export default {
       return response;
     }
     try {
-      if (url.pathname === "/health") return json({ ok: true, transport: "webrtc" });
+      if (url.pathname === "/health") return json({ ok: true, transport: "webrtc", fallback: "https" });
       if (url.pathname === "/api/config" && request.method === "GET") {
         return json({ iceServers: env.ICE_SERVERS_JSON ? JSON.parse(env.ICE_SERVERS_JSON) : [
           { urls: ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"] },
@@ -32,7 +32,7 @@ export default {
         await store.create(pin, hostToken);
         return json({ pin, roomId: pin, hostToken }, 201);
       }
-      const match = url.pathname.match(/^\/api\/rooms\/([A-Z0-9-]+)(?:\/(join|signal))?$/i);
+      const match = url.pathname.match(/^\/api\/rooms\/([A-Z0-9-]+)(?:\/(join|signal|relay))?$/i);
       if (!match) return json({ message: "Ruta no encontrada." }, 404);
       const pin = match[1].replaceAll("-", "").toUpperCase();
       const room = await store.get(pin);
@@ -47,7 +47,20 @@ export default {
       }
       if (!host && auth !== room.guest) return json({ message: "No pertenecés a esta sala." }, 403);
       if (match[2] === "signal" && request.method === "GET") {
-        return json({ description: JSON.parse((host ? room.answer : room.offer) || "null") });
+        return json({ description: JSON.parse((host ? room.answer : room.offer) || "null"), relay: !!room.relay });
+      }
+      if (match[2] === "relay" && request.method === "POST") {
+        const raw = await request.text();
+        if (raw.length > 24000) return json({ message: "Mensaje demasiado grande." }, 413);
+        let packet;
+        try { packet = JSON.parse(raw); } catch { return json({ message: "Mensaje inválido." }, 400); }
+        const message = (m: unknown) => !!m && typeof m === "object" && !Array.isArray(m);
+        if (!packet || !Number.isSafeInteger(packet.seq) || packet.seq < 1 || !Number.isSafeInteger(packet.ack) || packet.ack < 0
+          || !Array.isArray(packet.controls) || packet.controls.length > 64
+          || !packet.controls.every((c: any, i: number) => Number.isSafeInteger(c.id) && c.id > 0 && message(c.message) && (i === 0 || c.id > packet.controls[i - 1].id))
+          || (packet.fast !== null && !message(packet.fast))) return json({ message: "Mensaje inválido." }, 400);
+        const peer = await store.relay(pin, host, JSON.stringify({ seq: packet.seq, ack: packet.ack, controls: packet.controls, fast: packet.fast, at: Date.now() }));
+        return json({ peer, now: Date.now() });
       }
       if (match[2] === "signal" && request.method === "POST") {
         if (Number(request.headers.get("content-length")) > 32000) return json({ message: "Mensaje demasiado grande." }, 413);

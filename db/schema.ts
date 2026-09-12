@@ -1,11 +1,14 @@
 import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
 
-// Sólo se guarda el encuentro inicial. La pelota y el marcador nunca pasan por aquí.
+// Señalización y dos buzones acotados para el respaldo HTTPS.
 export const rooms = sqliteTable("rooms", {
   pin: text("pin").primaryKey(),
   host: text("host").notNull(),
   guest: text("guest"),
   offer: text("offer"),
   answer: text("answer"),
+  relay: integer("relay").notNull().default(0),
+  hostRelay: text("host_relay"),
+  guestRelay: text("guest_relay"),
   expires: integer("expires").notNull(),
 }, table => [index("rooms_expires").on(table.expires)]);

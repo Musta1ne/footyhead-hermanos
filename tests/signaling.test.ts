@@ -51,6 +51,18 @@ test("sala real en SQLite: roles, tercero rechazado, señal privada y vencimient
   assert.equal((await request(`/api/rooms/${pin}/signal`, "POST", guest, offer)).status, 400);
   const publicRoom = await (await request(`/api/rooms/${pin}`)).json() as any;
   assert.equal(publicRoom.host, undefined); assert.equal(publicRoom.hostToken, undefined);
+  const relay = (seq: number, fast: unknown = null) => ({ seq, ack: 0, controls: [], fast });
+  assert.equal((await request(`/api/rooms/${pin}/relay`, "POST", "a".repeat(32), relay(1))).status, 403);
+  assert.equal((await request(`/api/rooms/${pin}/relay`, "POST", hostToken, relay(-1))).status, 400);
+  assert.equal((await request(`/api/rooms/${pin}/relay`, "POST", hostToken, relay(1, "invalid"))).status, 400);
+  assert.equal((await request(`/api/rooms/${pin}/relay`, "POST", hostToken, relay(1, { type: "state", score: [1, 0] }))).status, 200);
+  const relayed = await (await request(`/api/rooms/${pin}/relay`, "POST", guest, relay(1))).json() as any;
+  assert.deepEqual(relayed.peer.fast.score, [1, 0]);
+  assert.equal((await (await request(`/api/rooms/${pin}/signal`, "GET", guest)).json() as any).relay, true);
+  await request(`/api/rooms/${pin}/relay`, "POST", hostToken, relay(3, { type: "state", score: [2, 0] }));
+  await request(`/api/rooms/${pin}/relay`, "POST", hostToken, relay(2, { type: "state", score: [0, 0] }));
+  const latest = await (await request(`/api/rooms/${pin}/relay`, "POST", guest, relay(2))).json() as any;
+  assert.deepEqual(latest.peer.fast.score, [2, 0]);
   sql.prepare("UPDATE rooms SET expires = 0 WHERE pin = ?").run(pin);
   assert.equal((await request(`/api/rooms/${pin}`)).status, 404);
   sql.close();
