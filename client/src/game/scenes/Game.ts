@@ -1,7 +1,7 @@
 import Phaser, { Scene } from "phaser";
 import { Peer } from "../peer";
 import { ARCADE_FONT, drawGoal, drawStadium } from "./stadium";
-import { Simulation, RULES, emptyInput, isInput, type Input, type Snapshot } from "../simulation";
+import { Simulation, RULES, bootPose, emptyInput, isInput, type Input, type Snapshot } from "../simulation";
 
 const CONTROLS = "¡A jugar! Que gane el mejor.";
 
@@ -46,7 +46,7 @@ export class Game extends Scene {
     drawGoal(this, true);
     this.heads = [1, 2].map(team => this.add.image(0, 0, `sprite-${team}`).setFlipX(team === 2));
     this.boots = [1, 2].map(team => this.add.image(0, 0, `boot-${team}`));
-    this.ball = this.add.image(512, 400, "football");
+    this.ball = this.add.image(512, RULES.serveY, "football").setDisplaySize(RULES.ballRadius * 2, RULES.ballRadius * 2);
     const scoreStyle = { fontFamily: ARCADE_FONT, fontSize: 60, color: "#245e27", stroke: "#fffbe7", strokeThickness: 5, shadow: { offsetX: 2, offsetY: 3, color: "#263b2a", blur: 4, fill: true } };
     this.scoreText = this.add.text(512, 207, "0 : 0", scoreStyle).setOrigin(0.5);
     this.cornerScores = [this.add.text(22, 56, "0", { ...scoreStyle, fontSize: 44, color: "#fffbe7", stroke: "#17211d", strokeThickness: 2 }), this.add.text(1002, 56, "0", { ...scoreStyle, fontSize: 44, color: "#fffbe7", stroke: "#17211d", strokeThickness: 2 }).setOrigin(1, 0)];
@@ -68,7 +68,7 @@ export class Game extends Scene {
     this.pingText = this.add.text(512, 712, "Esperando al otro jugador…", { fontFamily: "Arial", fontSize: "16px", color: "#eef0da" }).setOrigin(0.5);
     this.networkText = this.add.text(512, 742, "", { fontFamily: "Arial", fontSize: "14px", color: "#ffe6a2", align: "center", wordWrap: { width: 960 } }).setOrigin(0.5);
     this.peer = new Peer(this.pin, text => this.status.setText(text), text => {
-      this.started = false; this.local.direction = 0; this.status.setText(text);
+      this.started = false; this.releaseControls(this.local); this.status.setText(text);
       this.replayButton.setVisible(false);
       this.replayPanel.setVisible(false);
     });
@@ -81,7 +81,7 @@ export class Game extends Scene {
       }
     };
     this.peer.onMessage = message => this.receive(message);
-    const release = () => { this.input.keyboard?.resetKeys(); this.local.direction = 0; };
+    const release = () => { this.input.keyboard?.resetKeys(); this.releaseControls(this.local); };
     const visibility = () => {
       release(); this.accumulator = 0;
       this.peer.send({ type: "visibility", hidden: document.hidden }, true);
@@ -103,7 +103,7 @@ export class Game extends Scene {
     }
     if (message.type === "visibility" && typeof message.hidden === "boolean") {
       this.remoteHidden = message.hidden;
-      this.remote.direction = 0; this.accumulator = 0;
+      this.releaseControls(this.remote); this.accumulator = 0;
     }
     if (this.peer.host && message.type === "input" && message.match === this.sim.match && !this.sim.finished && isInput(message.input)) {
       // El canal rápido puede entregar desordenado: nunca retroceder una orden.
@@ -159,6 +159,8 @@ export class Game extends Scene {
     if (!this.started || !this.peer.ready || paused) { this.accumulator = 0; return; }
     const { UP, LEFT, RIGHT, SPACE } = this.keys;
     this.local.direction = LEFT.isDown ? -1 : RIGHT.isDown ? 1 : 0;
+    this.local.jumpHeld = UP.isDown;
+    this.local.kickHeld = SPACE.isDown;
     if (Phaser.Input.Keyboard.JustDown(UP)) this.local.jump++;
     if (Phaser.Input.Keyboard.JustDown(SPACE)) this.local.kick++;
     this.accumulator += Math.min(delta, 100);
@@ -166,7 +168,7 @@ export class Game extends Scene {
       this.accumulator -= RULES.stepMs;
       this.local.seq++;
       if (this.peer.host) {
-        if (performance.now() - this.remoteAt > RULES.inputTimeoutMs) this.remote.direction = 0;
+        if (performance.now() - this.remoteAt > RULES.inputTimeoutMs) this.releaseControls(this.remote);
         const before = this.sim.round;
         this.sim.step(this.local, this.remote);
         if (this.sim.round > before) this.sound.play("die");
@@ -187,10 +189,14 @@ export class Game extends Scene {
   }
 
   private resetMatchControls() {
-    this.local.direction = 0; this.remote.direction = 0;
+    this.releaseControls(this.local); this.releaseControls(this.remote);
     this.pending = []; this.accumulator = 0;
     this.input.keyboard?.resetKeys();
     this.corrections = this.corrections.map(() => ({ x: 0, y: 0 }));
+  }
+
+  private releaseControls(input: Input) {
+    input.direction = 0; input.jumpHeld = false; input.kickHeld = false;
   }
 
   private rematch(team: 1 | 2, match: number) {
@@ -213,10 +219,9 @@ export class Game extends Scene {
     });
     this.boots.forEach((boot, i) => {
       const age = this.sim.tick - this.sim.kicks[i];
-      const swing = age >= 0 && age < 12 ? Math.sin(age / 12 * Math.PI) : 0;
-      const side = i === 0 ? 1 : -1;
-      boot.setPosition(this.heads[i].x + side * (-15 + swing * 40), this.heads[i].y + 25 - swing * 18);
-      boot.setRotation(side * (-1.3 + swing * 1.8));
+      const pose = bootPose(i === 0 ? 1 : 2, age);
+      boot.setPosition(this.heads[i].x + pose.x, this.heads[i].y + pose.y);
+      boot.setRotation(pose.angle);
     });
   }
 }
@@ -230,6 +235,6 @@ function isSnapshot(value: unknown): value is Snapshot {
     && Number.isSafeInteger(v.match) && v.match >= 0
     && Number.isSafeInteger(v.remainingTicks) && v.remainingTicks >= 0 && v.remainingTicks <= RULES.matchTicks
     && Array.isArray(v.ready) && v.ready.length === 2 && v.ready.every(b => typeof b === "boolean")
-    && numbers(v.score) && numbers(v.kicks) && Array.isArray(v.inputs) && v.inputs.length === 2 && v.inputs.every(isInput)
+    && numbers(v.score) && numbers(v.kicks) && numbers(v.kickHits) && Array.isArray(v.inputs) && v.inputs.length === 2 && v.inputs.every(isInput)
     && Array.isArray(v.players) && v.players.length === 2 && v.players.every(body) && body(v.ball);
 }
