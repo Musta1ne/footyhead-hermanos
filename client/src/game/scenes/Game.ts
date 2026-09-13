@@ -1,8 +1,9 @@
 import Phaser, { Scene } from "phaser";
 import { Peer } from "../peer";
+import { ARCADE_FONT, drawGoal, drawStadium } from "./stadium";
 import { Simulation, RULES, emptyInput, isInput, type Input, type Snapshot } from "../simulation";
 
-const CONTROLS = "← / →: moverse · ↑: saltar · Espacio: patear";
+const CONTROLS = "¡A jugar! Que gane el mejor.";
 
 export class Game extends Scene {
   private pin = "";
@@ -13,6 +14,9 @@ export class Game extends Scene {
   private boots: Phaser.GameObjects.Image[];
   private ball: Phaser.GameObjects.Image;
   private scoreText: Phaser.GameObjects.Text;
+  private cornerScores: Phaser.GameObjects.Text[];
+  private goalText: Phaser.GameObjects.Text;
+  private replayPanel: Phaser.GameObjects.Graphics;
   private clockText: Phaser.GameObjects.Text;
   private replayButton: Phaser.GameObjects.Text;
   private confirmedFinished = false;
@@ -37,27 +41,36 @@ export class Game extends Scene {
   create() {
     this.sim = new Simulation();
     this.keys = this.input.keyboard!.addKeys("UP, LEFT, RIGHT, SPACE") as typeof this.keys;
-    this.add.image(512, 600, "ground").setScale(1.3, 1);
-    this.add.image(25, 510, "goal");
-    this.add.image(999, 513, "goal").setFlipX(true);
+    drawStadium(this);
+    drawGoal(this, false);
+    drawGoal(this, true);
     this.heads = [1, 2].map(team => this.add.image(0, 0, `sprite-${team}`).setFlipX(team === 2));
     this.boots = [1, 2].map(team => this.add.image(0, 0, `boot-${team}`));
     this.ball = this.add.image(512, 400, "football");
-    this.scoreText = this.add.text(512, 175, "0 : 0", { fontFamily: "Arial Black", fontSize: 64, stroke: "#000000", strokeThickness: 5 }).setOrigin(0.5);
-    this.clockText = this.add.text(512, 240, "1:00", { fontFamily: "Arial Black", fontSize: 32, stroke: "#000000", strokeThickness: 4 }).setOrigin(0.5);
-    this.replayButton = this.add.text(512, 315, "Jugar otra vez", { fontFamily: "Arial", fontSize: 26, backgroundColor: "#185c35", padding: { x: 24, y: 14 } }).setOrigin(0.5).setVisible(false).setInteractive({ useHandCursor: true });
+    const scoreStyle = { fontFamily: ARCADE_FONT, fontSize: 60, color: "#245e27", stroke: "#fffbe7", strokeThickness: 5, shadow: { offsetX: 2, offsetY: 3, color: "#263b2a", blur: 4, fill: true } };
+    this.scoreText = this.add.text(512, 207, "0 : 0", scoreStyle).setOrigin(0.5);
+    this.cornerScores = [this.add.text(22, 56, "0", { ...scoreStyle, fontSize: 44, color: "#fffbe7", stroke: "#17211d", strokeThickness: 2 }), this.add.text(1002, 56, "0", { ...scoreStyle, fontSize: 44, color: "#fffbe7", stroke: "#17211d", strokeThickness: 2 }).setOrigin(1, 0)];
+    this.clockText = this.add.text(512, 28, "1:00", { ...scoreStyle, fontSize: 30, strokeThickness: 3 }).setOrigin(0.5);
+    this.goalText = this.add.text(512, 275, "¡GOL!", { ...scoreStyle, fontSize: 42, color: "#ffe52b", stroke: "#2c4325" }).setOrigin(0.5).setVisible(false);
+    this.replayPanel = this.add.graphics().setVisible(false);
+    this.replayPanel.fillStyle(0x34482c).fillRoundedRect(212, 304, 600, 62, 12);
+    this.replayPanel.fillStyle(0xc8cdc0).fillRoundedRect(212, 300, 600, 60, 12);
+    this.replayPanel.lineStyle(3, 0xfffced).strokeRoundedRect(212, 300, 600, 60, 12);
+    this.replayButton = this.add.text(512, 330, "Jugar otra vez", { fontFamily: ARCADE_FONT, fontSize: 26, color: "#215c2a", padding: { x: 20, y: 12 } }).setOrigin(0.5).setVisible(false).setInteractive({ useHandCursor: true });
+    this.replayButton.on("pointerover", () => this.replayButton.setColor("#44802b"));
+    this.replayButton.on("pointerout", () => this.replayButton.setColor("#215c2a"));
     this.replayButton.on("pointerdown", () => {
       if (!this.peer.ready || !this.confirmedFinished) return;
       if (this.peer.host) this.rematch(1, this.sim.match);
       else this.peer.send({ type: "rematch", match: this.sim.match }, true);
     });
-    this.status = this.add.text(512, 90, "Preparando conexión…", { fontFamily: "Arial", fontSize: "22px", align: "center", wordWrap: { width: 900 } }).setOrigin(0.5);
-    this.pingText = this.add.text(512, 135, "", { fontFamily: "Arial", fontSize: "16px" }).setOrigin(0.5);
-    this.networkText = this.add.text(512, 690, "", { fontFamily: "Arial", fontSize: "16px", align: "center", wordWrap: { width: 900 } }).setOrigin(0.5);
-    this.add.text(512, 650, `Sala ${this.pin} · Mantené esta pestaña abierta durante la partida`, { fontFamily: "Arial", fontSize: "18px" }).setOrigin(0.5);
+    this.status = this.add.text(512, 115, "Preparando conexión…", { fontFamily: "Arial", fontSize: "20px", color: "#23472d", backgroundColor: "#e7edda", padding: { x: 16, y: 10 }, align: "center", wordWrap: { width: 680 } }).setOrigin(0.5);
+    this.pingText = this.add.text(512, 712, "Esperando al otro jugador…", { fontFamily: "Arial", fontSize: "16px", color: "#eef0da" }).setOrigin(0.5);
+    this.networkText = this.add.text(512, 742, "", { fontFamily: "Arial", fontSize: "14px", color: "#ffe6a2", align: "center", wordWrap: { width: 960 } }).setOrigin(0.5);
     this.peer = new Peer(this.pin, text => this.status.setText(text), text => {
       this.started = false; this.local.direction = 0; this.status.setText(text);
       this.replayButton.setVisible(false);
+      this.replayPanel.setVisible(false);
     });
     this.peer.onReady = () => {
       this.status.setText(CONTROLS);
@@ -134,6 +147,11 @@ export class Game extends Scene {
     const seconds = Math.ceil(this.sim.remainingTicks / 60);
     this.clockText.setText(`${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`);
     this.replayButton.setVisible(this.confirmedFinished && this.peer.ready);
+    this.replayPanel.setVisible(this.confirmedFinished && this.peer.ready);
+    this.cornerScores.forEach((text, i) => text.setText(String(this.confirmedScore[i])));
+    this.goalText.setVisible(this.started && (this.sim.pause > 0 || this.confirmedFinished));
+    this.goalText.setText(this.confirmedFinished ? "¡FINAL DEL PARTIDO!" : "¡GOL!");
+    this.clockText.setColor(seconds <= 10 ? "#a62e21" : "#245e27");
     const ready = this.sim.ready[this.peer.host ? 0 : 1];
     this.replayButton.setText(ready ? "Esperando al otro jugador…" : this.sim.ready.some(Boolean) ? "Tu rival quiere revancha · Jugar otra vez" : "Jugar otra vez");
     this.replayButton.setAlpha(ready ? 0.7 : 1);

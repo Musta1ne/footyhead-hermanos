@@ -9,10 +9,11 @@ export class Preloader extends Scene {
 
   init() {
     //  A simple progress bar. This is the outline of the bar.
-    this.add.rectangle(512, 384, 468, 32).setStrokeStyle(1, 0xffffff);
+    this.add.text(512, 315, "PREPARANDO LA CANCHA", { fontFamily: "Impact, Arial Black, sans-serif", fontSize: 32, color: "#28532c" }).setOrigin(0.5);
+    this.add.rectangle(512, 384, 468, 32, 0xd6dfc8).setStrokeStyle(3, 0xfff5da);
 
     //  This is the progress bar itself. It will increase in size from the left based on the % of progress.
-    const bar = this.add.rectangle(512 - 230, 384, 4, 28, 0xffffff);
+    const bar = this.add.rectangle(512 - 230, 384, 4, 26, 0x638638).setOrigin(0, 0.5);
 
     //  Use the 'progress' event emitted by the LoaderPlugin to update the loading bar
     this.load.on("progress", (progress: number) => {

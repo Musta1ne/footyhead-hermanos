@@ -1,0 +1,91 @@
+body:has(.game-page) {
+  min-height: 100vh;
+  background: #203523;
+}
+#app:has(.game-page) {
+  height: auto;
+  min-height: 100vh;
+  overflow: visible;
+}
+#app:has(.game-page) > .cloud-left,
+#app:has(.game-page) > .cloud-right {
+  display: none;
+}
+.game-page {
+  width: 100%;
+  min-height: 100dvh;
+  box-sizing: border-box;
+  padding: 22px 18px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: radial-gradient(ellipse at 50% 25%, #658352, #283e2c 65%, #18291f);
+  color: #f4f0d5;
+}
+.game-cabinet {
+  width: min(100%, 1120px, calc((100dvh - 150px) * 4 / 3));
+}
+.game-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.game-toolbar h1 {
+  margin: 0;
+  font: 22px Impact, 'Arial Black', sans-serif;
+  color: #fff2d1;
+  text-shadow: 0 2px #12251a;
+}
+.game-toolbar h1 span { color: #ffe332; }
+.game-toolbar nav { display: flex; gap: 10px; }
+.game-menu-button {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 8px 15px;
+  white-space: nowrap;
+  border: 2px solid #f3f2df;
+  border-radius: 8px;
+  background: linear-gradient(#f1f0e4, #aeb7a5 52%, #cbd0bc);
+  box-shadow: inset 0 1px 3px #fff, 0 3px #101e13;
+  color: #25542a;
+  font: 17px Impact, 'Arial Black', sans-serif;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.game-menu-button:hover { filter: brightness(1.12); }
+.game-menu-button:active { transform: translateY(2px); }
+.game-menu-button:focus-visible { outline: 3px solid #ffe332; outline-offset: 4px; }
+.game-screen {
+  overflow: hidden;
+  border: 3px solid #bbc8a0;
+  border-radius: 8px;
+  box-shadow: 0 6px 0 #132519, 0 16px 40px #0c1b1c88;
+}
+.game-screen #game-container {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+}
+.game-screen canvas { display: block; }
+.game-room-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  font: 11px Arial, sans-serif;
+  color: #d2dec5;
+}
+.game-room-strip strong { letter-spacing: 1px; color: #fff3b9; }
+@media (max-width: 650px) {
+  .game-page { padding: 12px 8px; }
+  .game-cabinet { width: 100%; }
+  .game-toolbar { flex-wrap: wrap; gap: 10px; }
+  .game-toolbar h1 { font-size: 20px; }
+  .game-menu-button { min-height: 42px; font-size: 15px; padding-inline: 12px; }
+  .game-room-strip { flex-wrap: wrap; line-height: 1.5; }
+}
