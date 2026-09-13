@@ -45,7 +45,7 @@ export class Game extends Scene {
     drawGoal(this, false);
     drawGoal(this, true);
     this.heads = [1, 2].map(team => this.add.image(0, 0, `sprite-${team}`).setFlipX(team === 2));
-    this.boots = [1, 2].map(team => this.add.image(0, 0, `boot-${team}`));
+    this.boots = [1, 2].map(team => this.add.image(0, 0, `boot-${team}`).setDisplaySize(RULES.bootWidth, RULES.bootHeight));
     this.ball = this.add.image(512, RULES.serveY, "football").setDisplaySize(RULES.ballRadius * 2, RULES.ballRadius * 2);
     const scoreStyle = { fontFamily: ARCADE_FONT, fontSize: 60, color: "#245e27", stroke: "#fffbe7", strokeThickness: 5, shadow: { offsetX: 2, offsetY: 3, color: "#263b2a", blur: 4, fill: true } };
     this.scoreText = this.add.text(512, 207, "0 : 0", scoreStyle).setOrigin(0.5);
@@ -215,11 +215,10 @@ export class Game extends Scene {
       this.corrections[i].x *= decay; this.corrections[i].y *= decay;
       const sprite = i === 2 ? this.ball : this.heads[i];
       sprite.setPosition(body.position.x + this.corrections[i].x, body.position.y + this.corrections[i].y);
-      if (i === 2) sprite.setRotation(body.angle);
+      if (i === 2) sprite.setRotation(this.sim.ballRotation);
     });
     this.boots.forEach((boot, i) => {
-      const age = this.sim.tick - this.sim.kicks[i];
-      const pose = bootPose(i === 0 ? 1 : 2, age);
+      const pose = bootPose(i === 0 ? 1 : 2, this.sim.feet[i].lift);
       boot.setPosition(this.heads[i].x + pose.x, this.heads[i].y + pose.y);
       boot.setRotation(pose.angle);
     });
@@ -231,10 +230,14 @@ function isSnapshot(value: unknown): value is Snapshot {
   const v = value as Snapshot;
   const numbers = (a: unknown) => Array.isArray(a) && a.length === 2 && a.every(Number.isFinite);
   const body = (b: unknown) => !!b && typeof b === "object" && ["x", "y", "vx", "vy", "angle", "spin"].every(k => Number.isFinite((b as Record<string, unknown>)[k]));
+  const foot = (f: Snapshot["feet"][number]) => !!f && Number.isFinite(f.lift) && f.lift >= 0 && f.lift <= 1
+    && Number.isSafeInteger(f.tapTicks) && f.tapTicks >= 0 && f.tapTicks <= RULES.bootTapTicks;
   return Number.isSafeInteger(v.tick) && v.tick >= 0 && Number.isSafeInteger(v.round) && Number.isSafeInteger(v.pause)
     && Number.isSafeInteger(v.match) && v.match >= 0
     && Number.isSafeInteger(v.remainingTicks) && v.remainingTicks >= 0 && v.remainingTicks <= RULES.matchTicks
     && Array.isArray(v.ready) && v.ready.length === 2 && v.ready.every(b => typeof b === "boolean")
-    && numbers(v.score) && numbers(v.kicks) && numbers(v.kickHits) && Array.isArray(v.inputs) && v.inputs.length === 2 && v.inputs.every(isInput)
+    && numbers(v.score) && numbers(v.kicks) && Number.isFinite(v.ballRotation)
+    && Array.isArray(v.feet) && v.feet.length === 2 && v.feet.every(foot)
+    && Array.isArray(v.inputs) && v.inputs.length === 2 && v.inputs.every(isInput)
     && Array.isArray(v.players) && v.players.length === 2 && v.players.every(body) && body(v.ball);
 }

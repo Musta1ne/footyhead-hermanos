@@ -7,10 +7,11 @@ export const RULES = {
   stepMs: 1000 / 60, substeps: 2,
   speed: 3.75, acceleration: 0.65, releaseDrag: 0.82, jump: -4.3,
   playerGravity: 0.145, ballGravity: 0.1,
-  playerRadius: 22, ballRadius: 12, ballRestitution: 0.9, wallRestitution: 1,
+  playerRadius: 22, ballRadius: 12, ballRestitution: 0.6, wallRestitution: 1,
   maxBallSpeed: 14, serveY: 295, serveXSpeed: 3, serveYSpeed: -2.1,
-  kickX: 5.5, kickY: -3.6, bootRadius: 12,
-  kickDurationTicks: 12, kickCooldownTicks: 18, goalPauseTicks: 45,
+  bootRadius: 11, bootOrbit: 35, bootRestAngle: 2.02,
+  bootRaiseTicks: 8, bootLowerTicks: 8, bootTapTicks: 6, bootMotionTransfer: 0.55,
+  bootWidth: 24, bootHeight: 26, goalPauseTicks: 45,
   inputTimeoutMs: 750, snapshotEveryTicks: 2,
   matchTicks: 60 * 60,
 };
@@ -18,26 +19,39 @@ export type Team = 1 | 2;
 export type Input = { seq: number; direction: -1 | 0 | 1; jump: number; kick: number; jumpHeld: boolean; kickHeld: boolean };
 export const emptyInput = (): Input => ({ seq: 0, direction: 0, jump: 0, kick: 0, jumpHeld: false, kickHeld: false });
 export type BodyState = { x: number; y: number; vx: number; vy: number; angle: number; spin: number };
+export type FootState = { lift: number; tapTicks: number };
 export type Snapshot = {
   tick: number; round: number; pause: number; score: [number, number];
   match: number; remainingTicks: number; ready: [boolean, boolean];
   players: [BodyState, BodyState]; ball: BodyState;
-  inputs: [Input, Input]; kicks: [number, number]; kickHits: [number, number];
+  inputs: [Input, Input]; kicks: [number, number]; feet: [FootState, FootState]; ballRotation: number;
 };
 const { Engine, Bodies, Body, Composite, Query } = Matter;
 
-// Dibujo y contacto usan el mismo recorrido del pie, relativo a la cabeza.
-export function bootPose(team: Team, age: number) {
-  const active = age >= 0 && age < RULES.kickDurationTicks;
-  const swing = active ? Math.sin(age / RULES.kickDurationTicks * Math.PI) : 0;
+// lift=0: reposo; lift=1: pie levantado. La órbita no atraviesa la cabeza.
+// Dibujo y cuerpo sólido usan exactamente la misma posición.
+export function bootPose(team: Team, lift: number) {
+  const orbitAngle = RULES.bootRestAngle * (1 - lift);
   const side = team === 1 ? 1 : -1;
-  return { x: side * (-12 + swing * 55), y: 25 - swing * 20, angle: side * (-1.3 + swing * 1.8), active };
+  return { x: side * Math.cos(orbitAngle) * RULES.bootOrbit, y: Math.sin(orbitAngle) * RULES.bootOrbit, angle: side * (-1.3 + lift * 1.8) };
 }
+
+const COLLISION = { world: 1, head: 2, ball: 4, foot: 8 };
 
 export class Simulation {
   engine = Engine.create({ gravity: { x: 0, y: 1, scale: RULES.ballGravity / RULES.stepMs ** 2 } });
-  players = [200, 824].map(x => Bodies.circle(x, 550, RULES.playerRadius, { mass: 20, restitution: 0, friction: 0, frictionAir: 0, inertia: Infinity }));
-  ball = Bodies.circle(512, RULES.serveY, RULES.ballRadius, { mass: 3, restitution: RULES.ballRestitution, friction: 0.025, frictionAir: 0 });
+  players = [200, 824].map(x => Bodies.circle(x, 550, RULES.playerRadius, { mass: 20, restitution: 0, friction: 0, frictionAir: 0, inertia: Infinity,
+    collisionFilter: { category: COLLISION.head, group: Body.nextGroup(true) } }));
+  // Sin torque físico: la rotación visual no modifica la normal de rebote.
+  // El círculo mantiene su orientación; el balón puede rodar sin frenarse.
+  ball = Bodies.circle(512, RULES.serveY, RULES.ballRadius, { mass: 3, restitution: RULES.ballRestitution, friction: 0, frictionStatic: 0, frictionAir: 0, inertia: Infinity,
+    collisionFilter: { category: COLLISION.ball } });
+  feet: [FootState, FootState] = [{ lift: 0, tapTicks: 0 }, { lift: 0, tapTicks: 0 }];
+  boots = this.players.map(player => Bodies.circle(player.position.x, player.position.y, RULES.bootRadius, {
+    isStatic: true, restitution: 0.15, friction: 0, frictionStatic: 0,
+    collisionFilter: { category: COLLISION.foot, mask: COLLISION.head | COLLISION.ball, group: player.collisionFilter.group },
+  }));
+  ballRotation = 0;
   tick = 0;
   match = 0;
   remainingTicks = RULES.matchTicks;
@@ -59,7 +73,6 @@ export class Simulation {
       this.score = [0, 0]; this.round = 0; this.pause = 0;
       this.inputs = this.inputs.map(input => ({ ...input, direction: 0, jumpHeld: false, kickHeld: false })) as [Input, Input];
       this.kicks = [-100, -100];
-      this.kickHits = [-100, -100];
       this.serve();
     }
     return true;
@@ -69,11 +82,10 @@ export class Simulation {
   score: [number, number] = [0, 0];
   inputs: [Input, Input] = [emptyInput(), emptyInput()];
   kicks: [number, number] = [-100, -100];
-  kickHits: [number, number] = [-100, -100];
 
   constructor() {
     Composite.add(this.engine.world, [
-      ...this.players, this.ball,
+      ...this.players, this.ball, ...this.boots,
       Bodies.rectangle(-10, 300, 20, 768, { isStatic: true, restitution: RULES.wallRestitution }),
       Bodies.rectangle(1034, 300, 20, 768, { isStatic: true, restitution: RULES.wallRestitution }),
       Bodies.rectangle(512, -10, 1024, 20, { isStatic: true, restitution: RULES.wallRestitution }),
@@ -93,7 +105,10 @@ export class Simulation {
     Body.setPosition(this.ball, { x: 512, y: RULES.serveY });
     Body.setVelocity(this.ball, { x: this.round % 2 ? -RULES.serveXSpeed : RULES.serveXSpeed, y: RULES.serveYSpeed });
     Body.setAngularVelocity(this.ball, 0);
-    this.kicks = [-100, -100]; this.kickHits = [-100, -100];
+    this.kicks = [-100, -100];
+    this.feet = [{ lift: 0, tapTicks: 0 }, { lift: 0, tapTicks: 0 }];
+    this.ballRotation = 0;
+    this.syncBoots();
     // No reutilizar contactos de la posición anterior después de un gol.
     this.resetCollisions();
   }
@@ -118,20 +133,27 @@ export class Simulation {
       if ((input.jump > this.inputs[i].jump || input.jumpHeld) && this.supported(player)) {
         Body.setVelocity(player, { x: player.velocity.x, y: RULES.jump });
       }
-      if ((input.kick > this.inputs[i].kick || input.kickHeld) && this.tick - this.kicks[i] >= RULES.kickCooldownTicks) {
+      if (input.kick > this.inputs[i].kick || (input.kickHeld && !this.inputs[i].kickHeld)) {
         this.kicks[i] = this.tick;
+        // Una pulsación que ocurrió entre dos fotogramas sigue siendo útil.
+        // Una tecla sostenida, en cambio, baja apenas llega su liberación.
+        this.feet[i].tapTicks = input.kickHeld ? 0 : RULES.bootTapTicks;
       }
     });
     this.inputs = [{ ...one }, { ...two }];
     for (let substep = 0; substep < RULES.substeps; substep++) {
       this.players.forEach((player, i) => {
         Body.applyForce(player, player.position, { x: 0, y: player.mass * (RULES.playerGravity - RULES.ballGravity) / RULES.stepMs ** 2 });
-        this.kickContact(i, this.tick + substep / RULES.substeps - this.kicks[i]);
+        this.moveBoot(i, next[i].kickHeld || this.feet[i].tapTicks > 0);
       });
       this.limitBallSpeed();
       Engine.update(this.engine, RULES.stepMs / RULES.substeps);
       this.limitBallSpeed();
+      this.ballRotation = (this.ballRotation + this.ball.velocity.x / RULES.ballRadius / RULES.substeps) % (Math.PI * 2);
+      this.syncBoots();
+      this.resolveBootPair();
     }
+    this.feet.forEach(foot => { foot.tapTicks = Math.max(0, foot.tapTicks - 1); });
     const { x, y } = this.ball.position;
     if (y > 480 && (x < 65 || x > 959)) {
       this.score[x < 65 ? 1 : 0]++;
@@ -142,26 +164,55 @@ export class Simulation {
 
   private supported(player: Matter.Body) {
     if (Math.abs(player.velocity.y) > 0.75) return false;
-    const surfaces = Composite.allBodies(this.engine.world).filter(body => body !== player && body !== this.ball && body.bounds.min.y > player.position.y);
+    const surfaces = Composite.allBodies(this.engine.world).filter(body => body !== player && body !== this.ball
+      && body.collisionFilter.group !== player.collisionFilter.group && body.bounds.min.y > player.position.y);
     const foot = { x: player.position.x, y: player.bounds.max.y - 1 };
     return Query.ray(surfaces, foot, { x: foot.x, y: foot.y + 3 }, 4).length > 0;
   }
 
-  private kickContact(i: number, age: number) {
-    if (this.kickHits[i] === this.kicks[i]) return;
-    const pose = bootPose(i === 0 ? 1 : 2, age);
-    if (!pose.active) return;
-    const player = this.players[i], side = i === 0 ? 1 : -1;
-    if ((this.ball.position.x - player.position.x) * side < 0) return;
-    const dx = this.ball.position.x - player.position.x - pose.x;
-    const dy = this.ball.position.y - player.position.y - pose.y;
-    if (Math.hypot(dx, dy) > RULES.bootRadius + RULES.ballRadius) return;
-    this.kickHits[i] = this.kicks[i];
-    Body.setVelocity(this.ball, {
-      x: side * RULES.kickX + player.velocity.x * 0.35,
-      y: RULES.kickY + Math.max(-1, Math.min(1, dy * 0.05)) + Math.min(0, player.velocity.y) * 0.3,
+  private moveBoot(i: number, raised: boolean) {
+    const team = i === 0 ? 1 : 2, foot = this.feet[i], player = this.players[i];
+    const previous = bootPose(team, foot.lift);
+    const rate = 1 / ((raised ? RULES.bootRaiseTicks : RULES.bootLowerTicks) * RULES.substeps);
+    foot.lift = Math.max(0, Math.min(1, foot.lift + (raised ? rate : -rate)));
+    const pose = bootPose(team, foot.lift), boot = this.boots[i];
+    Body.setPosition(boot, { x: player.position.x + pose.x, y: player.position.y + pose.y });
+    // Cuerpo cinemático: transmite la velocidad de la cabeza y del barrido.
+    // Quedarse levantado no inyecta impulsos ni dispara una patada nueva.
+    // Matter no integra los cuerpos estáticos: su positionPrev debe expresar
+    // el desplazamiento de este subpaso, no el de un paso completo.
+    Body.setVelocity(boot, {
+      x: player.velocity.x / RULES.substeps + (pose.x - previous.x) * RULES.bootMotionTransfer,
+      y: player.velocity.y / RULES.substeps + (pose.y - previous.y) * RULES.bootMotionTransfer,
     });
-    Body.setAngularVelocity(this.ball, side * 0.2);
+  }
+
+  private syncBoots() {
+    this.boots.forEach((boot, i) => {
+      const pose = bootPose(i === 0 ? 1 : 2, this.feet[i].lift), player = this.players[i];
+      Body.setPosition(boot, { x: player.position.x + pose.x, y: player.position.y + pose.y });
+    });
+  }
+
+  private resolveBootPair() {
+    // Matter omite pares estático-estático. Las botas están ancladas a sus
+    // jugadores: su contacto separa a los dueños en lugar de superponer pies.
+    const dx = this.boots[1].position.x - this.boots[0].position.x;
+    const dy = this.boots[1].position.y - this.boots[0].position.y;
+    const distance = Math.hypot(dx, dy), overlap = RULES.bootRadius * 2 - distance;
+    if (overlap <= 0) return;
+    const nx = distance > 0.001 ? dx / distance : 1, ny = distance > 0.001 ? dy / distance : 0;
+    const [one, two] = this.players;
+    const inverseMass = one.inverseMass + two.inverseMass;
+    const shareOne = one.inverseMass / inverseMass, shareTwo = two.inverseMass / inverseMass;
+    Body.translate(one, { x: -nx * overlap * shareOne, y: -ny * overlap * shareOne });
+    Body.translate(two, { x: nx * overlap * shareTwo, y: ny * overlap * shareTwo });
+    const approaching = (two.velocity.x - one.velocity.x) * nx + (two.velocity.y - one.velocity.y) * ny;
+    if (approaching < 0) {
+      Body.setVelocity(one, { x: one.velocity.x + nx * approaching * shareOne, y: one.velocity.y + ny * approaching * shareOne });
+      Body.setVelocity(two, { x: two.velocity.x - nx * approaching * shareTwo, y: two.velocity.y - ny * approaching * shareTwo });
+    }
+    this.syncBoots();
   }
 
   private limitBallSpeed() {
@@ -174,7 +225,8 @@ export class Simulation {
     return { tick: this.tick, round: this.round, pause: this.pause, score: [...this.score],
       match: this.match, remainingTicks: this.remainingTicks, ready: [...this.ready],
       players: [body(this.players[0]), body(this.players[1])], ball: body(this.ball),
-      inputs: [{ ...this.inputs[0] }, { ...this.inputs[1] }], kicks: [...this.kicks], kickHits: [...this.kickHits] };
+      inputs: [{ ...this.inputs[0] }, { ...this.inputs[1] }], kicks: [...this.kicks],
+      feet: [{ ...this.feet[0] }, { ...this.feet[1] }], ballRotation: this.ballRotation };
   }
 
   restore(state: Snapshot) {
@@ -188,8 +240,10 @@ export class Simulation {
     this.match = state.match; this.remainingTicks = state.remainingTicks; this.ready = [...state.ready];
     this.score = [...state.score]; this.inputs = state.inputs.map(i => ({ ...i })) as [Input, Input];
     this.kicks = [...state.kicks];
-    this.kickHits = [...state.kickHits];
+    this.feet = [{ ...state.feet[0] }, { ...state.feet[1] }];
+    this.ballRotation = state.ballRotation;
     this.players.forEach((p, i) => body(p, state.players[i])); body(this.ball, state.ball);
+    this.syncBoots();
     this.resetCollisions();
   }
 

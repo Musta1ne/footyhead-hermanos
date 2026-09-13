@@ -1,8 +1,10 @@
 # Física base: referencia y calibración
 
-Referencia: video aportado por el usuario, `Desktop 2026.09.13 - 13.57.43.01.mp4`,
-78,48 segundos, 1920 × 1080, 60 FPS. Juego mostrado: Sports Heads Football
-Championship. No se implementaron powerups.
+Referencias aportadas por el usuario: `Desktop 2026.09.13 - 13.57.43.01.mp4`
+(78,48 s) y `Desktop 2026.09.13 - 18.44.43.02.mp4` (51,37 s), ambas
+1920 × 1080 y 60 FPS. Juego: Sports Heads Football Championship.
+No se implementaron powerups. Las medidas de movimiento y salto aprobadas
+en la primera iteración se conservan.
 
 ## Medidas
 
@@ -30,6 +32,35 @@ Cada paso corresponde a 1/60 s. La pelota no tiene resistencia de aire:
 mantiene la velocidad horizontal en vuelo. Los jugadores tienen una gravedad
 distinta, aceleran hasta su velocidad máxima y frenan progresivamente al soltar.
 
+## Pelota y pie: segunda referencia
+
+El segundo video conserva los 1120 px de ancho; el piso está en y=865 y el
+centro de la pelota apoyada en y≈852. Entre 3,6 y 8 s se distinguen un ápice
+inicial cercano a y=520 y dos rebotes con ápices cercanos a 728 y 808.
+Las raíces de las proporciones de altura dan restituciones de aproximadamente
+0,61 y 0,60. La simulación usa **0,6** y comprueba la velocidad de salida real.
+
+Entre 34 y 39,5 s la pelota rueda sin contactos a unos −19,89 px/s de video,
+equivalentes a −0,303 px/paso. Se elimina el frenado por fricción del balón.
+También se separa su giro visual (`ballRotation`) de la orientación del cuerpo
+de colisión: el torque del polígono de Matter ya no consume parte del rebote.
+La gravedad sigue siendo 0,1 px/paso² y la masa sigue siendo 3.
+
+Entre 32 y 39 s se observa el pie derecho quieto arriba mientras se mantiene P,
+y su retorno al soltar. El centro levantado está aproximadamente 35 unidades
+delante de la cabeza; en reposo está detrás y debajo. Se usa una órbita de
+radio 35, desde 2,02 rad hasta 0, con ascenso y descenso de 8 pasos cada uno.
+La bota pasa de 18×19 a 24×26 unidades y su colisión es un círculo de radio 11.
+
+El pie es un cuerpo cinemático unido a la cabeza. Colisiona continuamente con
+la pelota, la cabeza y el pie rival, incluso cuando está quieto. El contacto
+entre las dos botas separa a sus dueños porque Matter no resuelve pares de
+cuerpos estáticos. Su grupo excluye a su
+propia cabeza y su máscara excluye el suelo, para no cambiar la altura de apoyo
+ni el salto que el usuario aprobó. La velocidad de la cabeza más el 55 % del
+barrido alimentan el contacto. El motor resuelve la dirección según la normal,
+la velocidad relativa y las masas; no se fija una salida (vx, vy) al pulsar.
+
 ## Aspectos aproximados que conviene afinar jugando
 
 El tramo 7,45–7,90 s muestra una salida de pelota de aproximadamente
@@ -38,12 +69,9 @@ contacto ocurre junto al piso y la cabeza, no permite aislar exactamente la
 contribución de cada uno. Sirve de referencia para una patada baja; no de
 medición concluyente de la restitución del suelo.
 
-La potencia base del pie (5,5; −3,6), su recorrido de 12 pasos, la recuperación
-de 18 pasos, la aceleración horizontal de 0,65, las masas, el rebote y el límite
-de velocidad de pelota son decisiones de calibración. La altura de contacto
-y la velocidad del jugador modifican ligeramente la salida de la patada.
-Los coeficientes de restitución de Matter no equivalen directamente a la
-proporción de alturas de dos rebotes; se verificó la trayectoria resultante.
+El factor de transferencia del barrido, los 8 pasos de subida/bajada, la
+aproximación circular de la bota y el límite de velocidad son decisiones de
+calibración. No se dispone de las constantes del programa original.
 
 Los saltos elegidos ocurren antes de la primera recogida visible de un powerup.
 Se excluyeron de los ajustes los tramos posteriores con cambios de tamaño,
@@ -52,27 +80,30 @@ determina con precisión el comportamiento de todas las esquinas o patadas.
 
 ## Contactos y controles
 
-- El pie tiene una ventana de contacto y una posición compartida por el dibujo
-  y la simulación. No alcanza una pelota situada detrás o lejos por encima de
-  la cabeza. Una patada puede impactar una sola vez.
-- Mantener Espacio repite el gesto con su recuperación. Mantener Arriba vuelve
-  a saltar al aterrizar. Las pulsaciones breves siguen viajando como contadores
-  para sobrevivir a la pérdida de un paquete.
+- Mantener Espacio mantiene el pie arriba; soltarlo lo baja. La posición
+  compartida por dibujo y simulación es `bootPose(team, lift)`. Una pelota que
+  vuelve puede volver a chocar con el pie sin una nueva pulsación. No hay
+  temporizador que repita golpes ni un impulso extra al sostener la tecla.
+- Mantener Arriba vuelve a saltar al aterrizar. Las pulsaciones breves siguen
+  viajando como contadores para sobrevivir a un paquete perdido. Si un toque
+  entero ocurrió entre fotogramas, `tapTicks` conserva un barrido breve.
 - El salto requiere apoyo real bajo el personaje: piso, travesaño o rival.
   No se habilita un segundo salto en el aire.
 - La simulación usa dos subpasos por paso de red y limita la pelota a
   14 px/paso para evitar cruces de superficies finas en impactos rápidos.
-- `kickHits` forma parte del estado de red; restaurar una patada conserva si
-  ya golpeó o todavía puede golpear. Los controles sostenidos se liberan al
-  perder el foco y por el timeout de entrada remota.
+- `feet` guarda la elevación y los ticks del toque breve para restaurar el
+  movimiento a mitad del barrido. `ballRotation` sincroniza el giro visual.
+  Los controles sostenidos se liberan al perder el foco y por timeout remoto.
 
 ## Comprobación
 
 `tests/simulation.test.ts` comprueba los márgenes del salto y la inercia,
 las dos gravedades, rebotes que pierden altura, travesaños, apoyo sobre el rival,
-alcance del pie, repetición al mantener controles y restauración durante la
-patada. También conserva las comprobaciones de goles, revancha y colisiones
-tras restaurar estados.
+órbita y retorno del pie, bloqueo del rival, rebote contra el pie sostenido,
+rodadura, simetría de ambos lados y restauración durante el barrido.
+También conserva las comprobaciones de goles, revancha y colisiones tras
+restaurar estados. Los tres casos nuevos de pie sostenido, bloqueo del rival
+y rodadura fallaban en la versión anterior y pasan con esta implementación.
 
 Después de publicar esta versión ambos jugadores deben recargar y crear una
 sala nueva: el formato de entrada y de estado incluye campos nuevos.
