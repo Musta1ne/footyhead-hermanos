@@ -11,7 +11,9 @@
 | `worker/index.ts` | API de salas, configuración ICE y entrega de la página. No ejecuta física. |
 | `worker/rooms.ts` | Consultas a las salas temporales. |
 | `db/schema.ts` | Estructura de esa base; `drizzle/` contiene sus migraciones. |
+| `client/src/routes/home.tsx` | Menú principal. |
 | `client/src/routes/play.tsx` | Crear sala y copiar enlace. |
+| `client/src/layout/MenuShell.tsx` y `menu.css` | Estadio, título y botones del menú y la sala; estilos aislados de la partida. |
 | `client/public/assets/` | Imágenes y sonidos originales. |
 
 ## Un fotograma de la partida

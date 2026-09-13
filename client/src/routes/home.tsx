@@ -1,36 +1,19 @@
-import React from "react";
 import { Link } from "react-router-dom";
+import { MenuShell } from "../layout/MenuShell";
 
-import { Border, Button, Player, Title } from "../layout";
-
-function Home() {
-  const players: React.JSX.Element[] = [];
-  const NUM_PLAYERS = 4;
-
-  for (
-    let i = 0, pCache: Map<number, boolean> = new Map();
-    i < NUM_PLAYERS;
-    i++
-  ) {
-    const player = 100 + Math.floor(Math.random() * 30);
-    if (!pCache.has(player)) {
-      const flip = i % 2 != 0;
-      pCache.set(player, true);
-      players.push(<Player key={player} player={player} flip={flip} />);
-    } else {
-      i--;
-    }
-  }
-
+export default function Home() {
   return (
-    <>
-      <Title>Footy Head</Title>
-      <Border>{players}</Border>
-      <Link to="play">
-        <Button>Jugar online · 2 jugadores</Button>
-      </Link>
-    </>
+    <MenuShell>
+      <section className="arcade-home" aria-label="Menú principal">
+        <p className="arcade-eyebrow">DOS JUGADORES. UNA CANCHA.</p>
+        <h2>El clásico entre hermanos</h2>
+        <Link className="arcade-button arcade-button--large" to="/play">Jugar online</Link>
+        <p className="arcade-caption">Creá una sala, invitá a tu rival y salí a la cancha.</p>
+        <div className="arcade-matchup" aria-hidden="true">
+          <img src="/assets/images/104.png" alt="" /><span>VS</span><img src="/assets/images/112.png" alt="" />
+        </div>
+        <div className="arcade-ticket">1 VS 1 <span>•</span> ONLINE <span>•</span> ENTRE AMIGOS</div>
+      </section>
+    </MenuShell>
   );
 }
-
-export default Home;

@@ -6,7 +6,7 @@ Adaptación de [azaidi4/footyhead](https://github.com/azaidi4/footyhead). Conser
 
 Abrí [Footy Head online](https://footyhead-hermanos.elbarrilfumanchero.chatgpt.site).
 
-1. Elegí **Jugar online · 2 jugadores → Crear sala**.
+1. Elegí **Jugar online → Crear sala**.
 2. Copiá el enlace y compartilo con otra persona.
 3. Tocá **Entrar a jugar** con el mismo navegador donde creaste la sala. Sos el jugador izquierdo y tu navegador lleva la partida. Se conserva tu lugar aunque abras el enlace en otra pestaña; sólo puede haber una pestaña activa de esa sala.
 4. La persona invitada abre el enlace en su computadora y juega a la derecha. La partida comienza al conectarse.
