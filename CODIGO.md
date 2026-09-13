@@ -28,11 +28,12 @@
 
 Cada entrada tiene `seq`. Se ignoran entradas y estados anteriores a los ya recibidos. Los contadores de salto/patada sobreviven a un paquete perdido y evitan repetir la acción cuando llega el siguiente.
 
-`jumpHeld` y `kickHeld` permiten repetir acciones al mantener las teclas, con
-apoyo para saltar y recuperación entre patadas. `kickHits` guarda el golpe ya
-consumido de cada pie para restaurar la predicción sin duplicarlo. Dibujo y
-contacto comparten `bootPose`. Las medidas del gameplay y las aproximaciones
-elegidas están en [PHYSICS.md](PHYSICS.md).
+`jumpHeld` vuelve a saltar al aterrizar y `kickHeld` mantiene el pie levantado
+hasta soltar la tecla. `feet` guarda la elevación y el toque breve de cada pie;
+sus cuerpos cinemáticos se reconstruyen al restaurar la predicción. Dibujo y
+contacto comparten `bootPose(team, lift)`. `ballRotation` es el giro visual del
+balón, separado de su colisión. Las medidas y aproximaciones están en
+[PHYSICS.md](PHYSICS.md).
 
 ## Qué era hardcodeado y qué sigue siendo una regla
 

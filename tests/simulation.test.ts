@@ -1,7 +1,55 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import Matter from "../client/node_modules/matter-js/build/matter.js";
-import { Simulation, emptyInput, RULES, isInput } from "../client/src/game/simulation";
+import { Simulation, bootPose, emptyInput, RULES, isInput } from "../client/src/game/simulation";
+
+test("mantener la tecla no inicia patadas nuevas y el pie sigue bloqueando la pelota", () => {
+  const sim = new Simulation();
+  try {
+    const hold = { ...emptyInput(), kick: 1, kickHeld: true };
+    sim.step(hold, emptyInput());
+    const firstPress = sim.kicks[0];
+    for (let i = 0; i < 90; i++) sim.step(hold, emptyInput());
+    assert.equal(sim.kicks[0], firstPress, "el pie debe quedar arriba, sin repetir el gesto");
+    Matter.Body.setPosition(sim.ball, { x: sim.players[0].position.x + 60, y: sim.players[0].position.y });
+    Matter.Body.setVelocity(sim.ball, { x: -3, y: 0 });
+    for (let i = 0; i < 3; i++) sim.step(hold, emptyInput());
+    assert.ok(sim.ball.velocity.x > 0, "la pelota debe rebotar en el pie levantado antes de llegar a la cabeza");
+  } finally { sim.destroy(); }
+});
+
+test("el rival no puede atravesar el pie que se mantiene levantado", () => {
+  const sim = new Simulation();
+  try {
+    const hold = { ...emptyInput(), kick: 1, kickHeld: true };
+    for (let i = 0; i < 40; i++) sim.step(hold, emptyInput());
+    Matter.Body.setPosition(sim.players[1], { x: 278, y: sim.players[0].position.y });
+    for (let i = 0; i < 30; i++) sim.step(hold, { ...emptyInput(), direction: -1 });
+    assert.ok(sim.players[1].position.x - sim.players[0].position.x > 60, "la bota ocupa espacio delante de la cabeza");
+  } finally { sim.destroy(); }
+});
+
+test("la pelota rueda varios segundos sin apagarse por fricción", () => {
+  const sim = new Simulation();
+  try {
+    Matter.Body.setPosition(sim.ball, { x: 512, y: 578 });
+    Matter.Body.setVelocity(sim.ball, { x: 0.3, y: 0 });
+    for (let i = 0; i < 300; i++) sim.step(emptyInput(), emptyInput());
+    assert.ok(sim.ball.position.x > 590 && sim.ball.position.x < 610, `posición ${sim.ball.position.x}`);
+    assert.ok(sim.ball.velocity.x > 0.25 && sim.ball.velocity.x < 0.35);
+  } finally { sim.destroy(); }
+});
+
+test("dos pies levantados también se bloquean entre sí", () => {
+  const sim = new Simulation();
+  try {
+    const hold = { ...emptyInput(), kick: 1, kickHeld: true };
+    for (let i = 0; i < 150; i++) sim.step({ ...hold, direction: 1 }, { ...hold, direction: -1 });
+    assert.ok(sim.players[1].position.x - sim.players[0].position.x >= 91);
+    assert.ok(Math.hypot(sim.boots[1].position.x - sim.boots[0].position.x, sim.boots[1].position.y - sim.boots[0].position.y) >= 21.99);
+    assert.ok(sim.players.every(player => Math.abs(player.velocity.y) < 0.2));
+  } finally { sim.destroy(); }
+});
 
 test("el minuto incluye las pausas de gol y congela el resultado al terminar", () => {
   const sim = new Simulation();
@@ -80,20 +128,20 @@ test("mover y saltar responde en el primer paso, sin una respuesta de red", () =
   sim.destroy();
 });
 
-test("patada cercana y cooldown; una orden repetida no patea dos veces", () => {
+test("una pulsación breve barre la pelota y una orden repetida no reinicia el gesto", () => {
   const sim = new Simulation();
   const input = { ...emptyInput(), kick: 1 };
   for (let i = 0; i < 30; i++) sim.step(emptyInput(), emptyInput());
   Matter.Body.setPosition(sim.ball, { x: 245, y: 575 });
   Matter.Body.setVelocity(sim.ball, { x: 0, y: 0 });
   sim.step(input, emptyInput());
-  assert.equal(sim.kickHits[0], -100, "el pie todavía no alcanzó la pelota");
+  assert.equal(sim.ball.velocity.x, 0, "el pie todavía no alcanzó la pelota");
   for (let i = 0; i < 5; i++) sim.step(input, emptyInput());
   assert.ok(sim.ball.velocity.x > 5 && sim.ball.velocity.y < -2.5);
-  assert.equal(sim.kickHits[0], sim.kicks[0]);
   const kickTick = sim.kicks[0];
-  for (let i = 0; i < RULES.kickCooldownTicks + 2; i++) sim.step(input, emptyInput());
+  for (let i = 0; i < 24; i++) sim.step(input, emptyInput());
   assert.equal(sim.kicks[0], kickTick);
+  assert.equal(sim.feet[0].lift, 0);
   sim.destroy();
 });
 
@@ -170,7 +218,6 @@ test("la patada no toca una pelota detrás ni por encima de la cabeza", () => {
         sim.step({ ...emptyInput(), kick: 1 }, emptyInput());
         baseline.step(emptyInput(), emptyInput());
       }
-      assert.equal(sim.kickHits[0], -100);
       assert.deepEqual(sim.snapshot().ball, baseline.snapshot().ball);
     } finally { sim.destroy(); baseline.destroy(); }
   }
@@ -211,7 +258,7 @@ test("se puede saltar apoyado en el travesaño o en el rival", () => {
   }
 });
 
-test("restaurar durante la patada conserva el contacto pendiente y no duplica un golpe", () => {
+test("restaurar durante el barrido conserva la posición del pie y la trayectoria del contacto", () => {
   const host = new Simulation(), guest = new Simulation();
   try {
     const idle = emptyInput(), kick = { ...idle, kick: 1 };
@@ -222,11 +269,73 @@ test("restaurar durante la patada conserva el contacto pendiente y no duplica un
     for (let i = 0; i < 12; i++) {
       guest.restore(host.snapshot());
       host.step(kick, idle); guest.step(kick, idle);
-      assert.deepEqual(guest.kickHits, host.kickHits);
+      assert.deepEqual(guest.feet, host.feet);
       assert.ok(Math.hypot(host.ball.position.x - guest.ball.position.x, host.ball.position.y - guest.ball.position.y) < 0.5);
     }
-    assert.equal(host.kickHits[0], host.kicks[0]);
+    assert.ok(host.ball.velocity.x > 4);
   } finally { host.destroy(); guest.destroy(); }
+});
+
+test("el pie describe una órbita, queda arriba y vuelve al reposo al soltar", () => {
+  for (const team of [1, 2] as const) {
+    const sim = new Simulation();
+    try {
+      const idle = emptyInput(), hold = { ...idle, kick: 1, kickHeld: true }, index = team - 1;
+      for (let i = 0; i < 80; i++) {
+        sim.step(team === 1 ? hold : idle, team === 2 ? hold : idle);
+        const pose = bootPose(team, sim.feet[index].lift);
+        assert.ok(Math.abs(Math.hypot(pose.x, pose.y) - 35) < 0.001);
+        if (i > 10) assert.equal(sim.feet[index].lift, 1);
+        assert.ok(Math.abs(sim.boots[index].position.x - sim.players[index].position.x - pose.x) < 0.001);
+      }
+      sim.step(idle, idle);
+      assert.ok(sim.feet[index].lift < 1 && sim.feet[index].lift > 0);
+      for (let i = 0; i < 12; i++) sim.step(idle, idle);
+      assert.equal(sim.feet[index].lift, 0);
+      // Un toque liberado a mitad del ascenso no completa una animación fija.
+      sim.step(team === 1 ? { ...hold, kick: 2 } : idle, team === 2 ? { ...hold, kick: 2 } : idle);
+      const partial = sim.feet[index].lift;
+      sim.step(idle, idle);
+      assert.ok(sim.feet[index].lift < partial);
+    } finally { sim.destroy(); }
+  }
+});
+
+test("el pie de ambos lados golpea según el contacto y no fija la misma salida", () => {
+  const results: number[] = [];
+  for (const team of [1, 2] as const) {
+    for (const ballY of [575, 563]) {
+      const sim = new Simulation();
+      try {
+        for (let i = 0; i < 30; i++) sim.step(emptyInput(), emptyInput());
+        const player = sim.players[team - 1], side = team === 1 ? 1 : -1;
+        Matter.Body.setPosition(sim.ball, { x: player.position.x + side * 45, y: ballY });
+        Matter.Body.setVelocity(sim.ball, { x: 0, y: 0 });
+        const hold = { ...emptyInput(), kick: 1, kickHeld: true };
+        for (let i = 0; i < 10; i++) sim.step(team === 1 ? hold : emptyInput(), team === 2 ? hold : emptyInput());
+        assert.ok(sim.ball.velocity.x * side > 2);
+        assert.ok(Math.hypot(sim.ball.velocity.x, sim.ball.velocity.y) < 14.01);
+        results.push(sim.ball.velocity.y);
+      } finally { sim.destroy(); }
+    }
+  }
+  assert.ok(Math.abs(results[0] - results[1]) > 0.5, "la altura de contacto cambia el tiro");
+  assert.ok(Math.abs(results[0] - results[2]) < 0.2, "los dos lados tienen la misma física");
+});
+
+test("el rebote libre conserva aproximadamente el 60 por ciento de velocidad vertical", () => {
+  const sim = new Simulation();
+  try {
+    Matter.Body.setPosition(sim.ball, { x: 512, y: 300 });
+    Matter.Body.setVelocity(sim.ball, { x: 0, y: 0 });
+    let before = 0, rebound = 0;
+    for (let i = 0; i < 100; i++) {
+      before = sim.ball.velocity.y;
+      sim.step(emptyInput(), emptyInput());
+      if (before > 0 && sim.ball.velocity.y < 0) { rebound = -sim.ball.velocity.y / before; break; }
+    }
+    assert.ok(rebound > 0.57 && rebound < 0.63, `restitución ${rebound}`);
+  } finally { sim.destroy(); }
 });
 
 test("una patada lejana no cambia la velocidad de la pelota", () => {
