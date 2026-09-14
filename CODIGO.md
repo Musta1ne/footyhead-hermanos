@@ -5,9 +5,8 @@
 | Archivo | Qué cambiar ahí |
 | --- | --- |
 | `client/src/game/simulation.ts` | Reglas, velocidades, tamaño del campo, salto, patadas y goles. `RULES` agrupa las constantes de jugabilidad. |
-| `client/src/game/scenes/Game.ts` | Lectura de teclas configuradas, dibujo de los personajes, marcador, predicción y correcciones del invitado. |
-| `client/src/game/keys.ts` y `client/src/routes/controls.tsx` | Configuración local de teclas y pantalla para cambiarlas. |
-| `client/src/game/scenes/stadium.ts` | Tribunas, césped, arcos e indicaciones de teclas; no modifica la física. |
+| `client/src/game/scenes/Game.ts` | Flechas/Espacio, dibujo de los personajes, marcador, predicción y correcciones del invitado. |
+| `client/src/game/scenes/stadium.ts` | Tribunas, césped, arcos y decoración arcade; no modifica la física. |
 | `client/src/routes/game.tsx` y `client/src/layout/game.css` | Marco adaptable de la partida, botón de sonido y regreso al menú. |
 | `client/src/game/peer.ts` | Conectar los dos navegadores, medir ping, detectar desconexión y enviar paquetes. |
 | `client/src/game/relay.ts` | Respaldo HTTPS: último estado, mensajes fiables, confirmaciones y reintentos. |

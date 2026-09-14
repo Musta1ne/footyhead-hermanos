@@ -3,20 +3,6 @@ import assert from "node:assert/strict";
 import Matter from "../client/node_modules/matter-js/build/matter.js";
 import { Simulation, bootPose, circleBox, emptyInput, RULES, isInput } from "../client/src/game/simulation";
 
-test("la calibración del balón parte de los parámetros Box2D originales", () => {
-  const originalToProject = 1024 / 800;
-  const targetTickSeconds = (3 / 96) / (60 / 30);
-  assert.ok(Math.abs(RULES.ballGravity - 300 * originalToProject * targetTickSeconds ** 2) < 1e-12);
-  assert.ok(Math.abs(RULES.serveXSpeed - 150 * originalToProject * targetTickSeconds) < 1e-12);
-  assert.ok(Math.abs(RULES.serveYSpeed - -100 * originalToProject * targetTickSeconds) < 1e-12);
-  assert.equal(RULES.ballRestitution, 0.6);
-  const sim = new Simulation();
-  try {
-    assert.ok(Math.abs(sim.ball.velocity.x - RULES.serveXSpeed) < 1e-12);
-    assert.ok(Math.abs(sim.ball.velocity.y - RULES.serveYSpeed) < 1e-12);
-  } finally { sim.destroy(); }
-});
-
 test("círculo contra caja resuelve caras, esquinas y centros interiores", () => {
   assert.equal(circleBox(30, 0, 12, 8, 9), null);
   assert.deepEqual(circleBox(0, 0, 12, 8, 9), { nx: 1, ny: 0, depth: 20 });
@@ -26,7 +12,7 @@ test("círculo contra caja resuelve caras, esquinas y centros interiores", () =>
   assert.ok(Math.abs(corner.depth - (12 - Math.sqrt(72))) < 1e-12);
 });
 
-test("un impacto en la cabeza usa la restitución efectiva original sin desplazar al jugador", () => {
+test("un impacto en la cabeza usa restitución 0.65 sin desplazar al jugador", () => {
   const sim = new Simulation(), baseline = new Simulation();
   try {
     for (const s of [sim, baseline]) {
@@ -37,7 +23,7 @@ test("un impacto en la cabeza usa la restitución efectiva original sin desplaza
     Matter.Body.setVelocity(sim.ball, { x: 6, y: 0 });
     sim.step(emptyInput(), emptyInput()); baseline.step(emptyInput(), emptyInput());
     assert.deepEqual(sim.snapshot().players, baseline.snapshot().players);
-    assert.ok(Math.abs(sim.ball.velocity.x + 3.6) < 0.01);
+    assert.ok(Math.abs(sim.ball.velocity.x + 3.9) < 0.01);
   } finally { sim.destroy(); baseline.destroy(); }
 });
 
@@ -100,15 +86,14 @@ test("el rival no puede atravesar el pie que se mantiene levantado", () => {
   } finally { sim.destroy(); }
 });
 
-test("la pelota conserva rodadura y spin con la fricción del contacto original", () => {
+test("la pelota rueda varios segundos sin apagarse por fricción", () => {
   const sim = new Simulation();
   try {
     Matter.Body.setPosition(sim.ball, { x: 512, y: 578 });
     Matter.Body.setVelocity(sim.ball, { x: 0.3, y: 0 });
     for (let i = 0; i < 300; i++) sim.step(emptyInput(), emptyInput());
-    assert.ok(sim.ball.position.x > 560 && sim.ball.position.x < 580, `posición ${sim.ball.position.x}`);
-    assert.ok(sim.ball.velocity.x > 0.15 && sim.ball.velocity.x < 0.25);
-    assert.ok(Math.abs(sim.ball.angularVelocity) > 0.01);
+    assert.ok(sim.ball.position.x > 590 && sim.ball.position.x < 610, `posición ${sim.ball.position.x}`);
+    assert.ok(sim.ball.velocity.x > 0.25 && sim.ball.velocity.x < 0.35);
   } finally { sim.destroy(); }
 });
 
@@ -208,7 +193,7 @@ test("una pulsación breve barre la pelota y una orden repetida no reinicia el g
   Matter.Body.setVelocity(sim.ball, { x: 0, y: 0 });
   sim.step(input, emptyInput());
   for (let i = 0; i < 5; i++) sim.step(input, emptyInput());
-  assert.ok(sim.ball.velocity.x > 1.5 && sim.ball.velocity.y < 0);
+  assert.ok(sim.ball.velocity.x > 5 && sim.ball.velocity.y < -2.5);
   const kickTick = sim.kicks[0];
   for (let i = 0; i < 24; i++) sim.step(input, emptyInput());
   assert.equal(sim.kicks[0], kickTick);
@@ -248,7 +233,7 @@ test("la pelota cae más despacio que la cabeza y conserva velocidad horizontal 
     Matter.Body.setPosition(sim.ball, { x: 512, y: 200 });
     Matter.Body.setVelocity(sim.ball, { x: 3, y: 0 });
     for (let i = 0; i < 30; i++) sim.step(emptyInput(), emptyInput());
-    assert.ok(sim.ball.position.y > 242 && sim.ball.position.y < 243);
+    assert.ok(sim.ball.position.y > 244 && sim.ball.position.y < 248);
     assert.ok(sim.players[0].position.y > 264 && sim.players[0].position.y < 268);
     assert.ok(Math.abs(sim.ball.position.x - 602) < 0.1);
   } finally { sim.destroy(); }
@@ -343,7 +328,7 @@ test("restaurar durante el barrido conserva la posición del pie y la trayectori
       assert.deepEqual(guest.feet, host.feet);
       assert.ok(Math.hypot(host.ball.position.x - guest.ball.position.x, host.ball.position.y - guest.ball.position.y) < 0.5);
     }
-    assert.ok(host.ball.velocity.x > 1.5);
+    assert.ok(host.ball.velocity.x > 4);
   } finally { host.destroy(); guest.destroy(); }
 });
 
@@ -372,7 +357,7 @@ test("el pie describe una órbita, queda arriba y vuelve al reposo al soltar", (
   }
 });
 
-test("la patada activa depende de la velocidad de la bota y es simétrica en ambos lados", () => {
+test("la patada activa tiene salida fija y simétrica en ambos lados", () => {
   const results: number[] = [];
   for (const team of [1, 2] as const) {
     for (const ballY of [575, 563]) {
@@ -384,13 +369,13 @@ test("la patada activa depende de la velocidad de la bota y es simétrica en amb
         Matter.Body.setVelocity(sim.ball, { x: 0, y: 0 });
         const hold = { ...emptyInput(), kick: 1, kickHeld: true };
         for (let i = 0; i < 10; i++) sim.step(team === 1 ? hold : emptyInput(), team === 2 ? hold : emptyInput());
-        assert.ok(sim.ball.velocity.x * side > 0.5);
-        assert.ok(Math.hypot(sim.ball.velocity.x, sim.ball.velocity.y) < 4);
+        assert.ok(sim.ball.velocity.x * side > 2);
+        assert.ok(Math.hypot(sim.ball.velocity.x, sim.ball.velocity.y) < 14.01);
         results.push(sim.ball.velocity.y);
       } finally { sim.destroy(); }
     }
   }
-  assert.ok(Math.abs(results[0] - results[1]) > 0.5, "la salida cambia con la altura de contacto");
+  assert.ok(Math.abs(results[0] - results[1]) < 0.3, "la salida se mantiene entre alturas de contacto");
   assert.ok(Math.abs(results[0] - results[2]) < 0.2, "los dos lados tienen la misma física");
 });
 

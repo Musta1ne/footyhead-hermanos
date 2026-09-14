@@ -5,7 +5,6 @@ import ErrorPage from "./error-page";
 import Home from "./routes/home";
 import Game from "./routes/game";
 import Play from "./routes/play";
-import Controls from "./routes/controls";
 import { action as playAction } from "./actions/play";
 import { loader as gameLoader } from "./loaders/game";
 
@@ -20,11 +19,6 @@ function App() {
       path: "/play",
       action: playAction,
       element: <Play />,
-      errorElement: <ErrorPage />,
-    },
-    {
-      path: "/controls",
-      element: <Controls />,
       errorElement: <ErrorPage />,
     },
     {

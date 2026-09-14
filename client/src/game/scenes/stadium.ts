@@ -1,15 +1,9 @@
 import { Scene } from "phaser";
-import { formatKey, loadKeyBindings, type KeyBindings } from "../keys";
 
 export const ARCADE_FONT = "Impact, Arial Black, sans-serif";
 
-export type StadiumControls = {
-  movement: Phaser.GameObjects.Text;
-  action: Phaser.GameObjects.Text;
-};
-
 /** Decorative scenery only. Goal posts and turf align with Simulation's existing bodies. */
-export function drawStadium(scene: Scene, bindings: KeyBindings = loadKeyBindings()): StadiumControls {
+export function drawStadium(scene: Scene) {
   const g = scene.add.graphics();
   g.fillGradientStyle(0x85bfd0, 0x85bfd0, 0xc1ded4, 0xc1ded4);
   g.fillRect(0, 0, 1024, 590);
@@ -74,19 +68,12 @@ export function drawStadium(scene: Scene, bindings: KeyBindings = loadKeyBinding
   scene.add.text(18, 16, "IZQUIERDA", { fontFamily: ARCADE_FONT, fontSize: 25, color: "#ff6549" });
   scene.add.text(1006, 16, "DERECHA", { fontFamily: ARCADE_FONT, fontSize: 25, color: "#ff6549" }).setOrigin(1, 0);
 
-  const movement = scene.add.text(22, 622, "", { fontFamily: ARCADE_FONT, fontSize: 20, color: "#f6f3da" });
-  const action = scene.add.text(22, 652, "", { fontFamily: ARCADE_FONT, fontSize: 20, color: "#f6f3da" });
-  updateStadiumControls({ movement, action }, bindings);
+  scene.add.text(22, 622, "← →  MOVERSE     ↑  SALTAR", { fontFamily: ARCADE_FONT, fontSize: 20, color: "#f6f3da" });
+  scene.add.text(22, 652, "ESPACIO  ·  PATEAR", { fontFamily: ARCADE_FONT, fontSize: 20, color: "#f6f3da" });
   scene.add.text(511, 627, "FOOTY HEAD", { fontFamily: ARCADE_FONT, fontSize: 26, color: "#fff5da", stroke: "#233021", strokeThickness: 4 }).setOrigin(0.5);
   scene.add.text(511, 657, "HERMANOS", { fontFamily: ARCADE_FONT, fontSize: 29, color: "#ffe52b", stroke: "#233021", strokeThickness: 4 }).setOrigin(0.5);
   scene.add.text(860, 632, "1 MINUTO", { fontFamily: ARCADE_FONT, fontSize: 25, color: "#f6f3da" }).setOrigin(0.5);
   scene.add.text(860, 661, "EL CLÁSICO · 1 VS 1", { fontFamily: ARCADE_FONT, fontSize: 18, color: "#e1e8c9" }).setOrigin(0.5);
-  return { movement, action };
-}
-
-export function updateStadiumControls(controls: StadiumControls, bindings: KeyBindings) {
-  controls.movement.setText(`${formatKey(bindings.left)} ${formatKey(bindings.right)}  MOVERSE     ${formatKey(bindings.jump)}  SALTAR`);
-  controls.action.setText(`${formatKey(bindings.kick)}  ·  PATEAR`);
 }
 
 export function drawGoal(scene: Scene, right: boolean) {
