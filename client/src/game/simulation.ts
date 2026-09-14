@@ -4,14 +4,15 @@ import Matter from "matter-js";
 export const RULES = {
   // Velocidades en px/paso de 60 Hz, aceleraciones en px/paso².
   // Medidas y márgenes de la referencia en PHYSICS.md.
-  stepMs: 1000 / 60, substeps: 2,
+  stepMs: 1000 / 60, substeps: 3,
   speed: 3.75, acceleration: 0.65, releaseDrag: 0.82, jump: -4.3,
   playerGravity: 0.145, ballGravity: 0.1,
   playerRadius: 22, ballRadius: 12, ballRestitution: 0.6, wallRestitution: 1,
   maxBallSpeed: 14, serveY: 295, serveXSpeed: 3, serveYSpeed: -2.1,
-  bootRadius: 11, bootOrbit: 35, bootRestAngle: 2.02,
-  bootRaiseTicks: 8, bootLowerTicks: 8, bootTapTicks: 6, bootMotionTransfer: 0.55,
-  bootWidth: 24, bootHeight: 26, goalPauseTicks: 45,
+  bootRadius: 8, bootOrbit: 23, bootRestAngle: 1.05,
+  bootRaiseTicks: 3, bootLowerTicks: 8, bootTapTicks: 6, bootMotionTransfer: 0.55,
+  bootWidth: 16, bootHeight: 18, goalPauseTicks: 45,
+  headRestitution: 0.65, bootRestitution: 0.6, kickX: 8, kickY: 5,
   inputTimeoutMs: 750, snapshotEveryTicks: 2,
   matchTicks: 60 * 60,
 };
@@ -38,14 +39,28 @@ export function bootPose(team: Team, lift: number) {
 
 const COLLISION = { world: 1, head: 2, ball: 4, foot: 8 };
 
+// Normal saliente y profundidad, incluso si el centro está dentro de la caja.
+export function circleBox(x: number, y: number, radius: number, halfWidth: number, halfHeight: number) {
+  const dx = x - Math.max(-halfWidth, Math.min(halfWidth, x));
+  const dy = y - Math.max(-halfHeight, Math.min(halfHeight, y));
+  const distance = Math.hypot(dx, dy);
+  if (distance >= radius) return null;
+  if (distance > 0) return { nx: dx / distance, ny: dy / distance, depth: radius - distance };
+  const horizontal = halfWidth - Math.abs(x), vertical = halfHeight - Math.abs(y);
+  return horizontal < vertical
+    ? { nx: x < 0 ? -1 : 1, ny: 0, depth: radius + horizontal }
+    : { nx: 0, ny: y <= 0 ? -1 : 1, depth: radius + vertical };
+}
+
 export class Simulation {
   engine = Engine.create({ gravity: { x: 0, y: 1, scale: RULES.ballGravity / RULES.stepMs ** 2 } });
   players = [200, 824].map(x => Bodies.circle(x, 550, RULES.playerRadius, { mass: 20, restitution: 0, friction: 0, frictionAir: 0, inertia: Infinity,
     collisionFilter: { category: COLLISION.head, group: Body.nextGroup(true) } }));
   // Sin torque físico: la rotación visual no modifica la normal de rebote.
   // El círculo mantiene su orientación; el balón puede rodar sin frenarse.
-  ball = Bodies.circle(512, RULES.serveY, RULES.ballRadius, { mass: 3, restitution: RULES.ballRestitution, friction: 0, frictionStatic: 0, frictionAir: 0, inertia: Infinity,
-    collisionFilter: { category: COLLISION.ball } });
+  // Contenedor de estado compatible con snapshots; no se integra en Matter.
+  ball = Bodies.circle(512, RULES.serveY, RULES.ballRadius, { mass: 1, frictionAir: 0, inertia: Infinity,
+    collisionFilter: { category: COLLISION.ball, mask: 0 } });
   feet: [FootState, FootState] = [{ lift: 0, tapTicks: 0 }, { lift: 0, tapTicks: 0 }];
   boots = this.players.map(player => Bodies.circle(player.position.x, player.position.y, RULES.bootRadius, {
     isStatic: true, restitution: 0.15, friction: 0, frictionStatic: 0,
@@ -85,7 +100,7 @@ export class Simulation {
 
   constructor() {
     Composite.add(this.engine.world, [
-      ...this.players, this.ball, ...this.boots,
+      ...this.players, ...this.boots,
       Bodies.rectangle(-10, 300, 20, 768, { isStatic: true, restitution: RULES.wallRestitution }),
       Bodies.rectangle(1034, 300, 20, 768, { isStatic: true, restitution: RULES.wallRestitution }),
       Bodies.rectangle(512, -10, 1024, 20, { isStatic: true, restitution: RULES.wallRestitution }),
@@ -152,6 +167,7 @@ export class Simulation {
       this.ballRotation = (this.ballRotation + this.ball.velocity.x / RULES.ballRadius / RULES.substeps) % (Math.PI * 2);
       this.syncBoots();
       this.resolveBootPair();
+      this.stepBall();
     }
     this.feet.forEach(foot => { foot.tapTicks = Math.max(0, foot.tapTicks - 1); });
     const { x, y } = this.ball.position;
@@ -176,6 +192,9 @@ export class Simulation {
     const rate = 1 / ((raised ? RULES.bootRaiseTicks : RULES.bootLowerTicks) * RULES.substeps);
     foot.lift = Math.max(0, Math.min(1, foot.lift + (raised ? rate : -rate)));
     const pose = bootPose(team, foot.lift), boot = this.boots[i];
+    // En reposo queda recogida contra el cuerpo: no debe empujar el apoyo
+    // bajo la cabeza al aterrizar sobre otro jugador.
+    boot.collisionFilter.mask = foot.lift > 0.5 ? COLLISION.head : 0;
     Body.setPosition(boot, { x: player.position.x + pose.x, y: player.position.y + pose.y });
     // Cuerpo cinemático: transmite la velocidad de la cabeza y del barrido.
     // Quedarse levantado no inyecta impulsos ni dispara una patada nueva.
@@ -190,6 +209,7 @@ export class Simulation {
   private syncBoots() {
     this.boots.forEach((boot, i) => {
       const pose = bootPose(i === 0 ? 1 : 2, this.feet[i].lift), player = this.players[i];
+      boot.collisionFilter.mask = this.feet[i].lift > 0.5 ? COLLISION.head : 0;
       Body.setPosition(boot, { x: player.position.x + pose.x, y: player.position.y + pose.y });
     });
   }
@@ -218,6 +238,54 @@ export class Simulation {
   private limitBallSpeed() {
     const speed = Math.hypot(this.ball.velocity.x, this.ball.velocity.y);
     if (speed > RULES.maxBallSpeed) Body.setVelocity(this.ball, { x: this.ball.velocity.x * RULES.maxBallSpeed / speed, y: this.ball.velocity.y * RULES.maxBallSpeed / speed });
+  }
+
+  private stepBall() {
+    const dt = 1 / RULES.substeps, radius = RULES.ballRadius;
+    let { x, y } = this.ball.position;
+    let vx = this.ball.velocity.x, vy = this.ball.velocity.y + RULES.ballGravity * dt;
+    x += vx * dt; y += vy * dt;
+    const contact = (nx: number, ny: number, depth: number, restitution: number, ux = 0, uy = 0) => {
+      x += nx * (depth + 0.000001); y += ny * (depth + 0.000001);
+      const relative = (vx - ux) * nx + (vy - uy) * ny;
+      if (relative < 0) {
+        const impulse = -(1 + restitution) * relative;
+        vx += impulse * nx; vy += impulse * ny;
+      }
+    };
+    // Primero la bota: una patada baja debe poder alcanzar la pelota junto a la cabeza.
+    this.boots.forEach((boot, i) => {
+      const hit = circleBox(x - boot.position.x, y - boot.position.y, radius, RULES.bootWidth / 2, RULES.bootHeight / 2);
+      if (!hit) return;
+      const active = this.tick - this.kicks[i] < RULES.bootRaiseTicks;
+      contact(hit.nx, hit.ny, hit.depth, RULES.bootRestitution);
+      if (active) { vx = (i === 0 ? 1 : -1) * RULES.kickX; vy = -RULES.kickY; }
+    });
+    this.players.forEach((player, i) => {
+      const dx = x - player.position.x, dy = y - player.position.y;
+      const distance = Math.hypot(dx, dy), overlap = radius + RULES.playerRadius - distance;
+      if (overlap <= 0) return;
+      // Coincidencia exacta: normal estable, sin división por cero.
+      const nx = distance > 0 ? dx / distance : i === 0 ? 1 : -1;
+      const ny = distance > 0 ? dy / distance : 0;
+      contact(nx, ny, overlap, RULES.headRestitution, player.velocity.x, player.velocity.y);
+    });
+    // Las barras conservan su inclinación visual: círculo contra caja en su espacio local.
+    for (const [cx, angle] of [[40, 0.05], [984, -0.05]]) {
+      const cos = Math.cos(angle), sin = Math.sin(angle), dx = x - cx, dy = y - 465;
+      const hit = circleBox(dx * cos + dy * sin, -dx * sin + dy * cos, radius, 40, 2.5);
+      if (hit) contact(hit.nx * cos - hit.ny * sin, hit.nx * sin + hit.ny * cos, hit.depth, RULES.wallRestitution);
+    }
+    if (x < radius) contact(1, 0, radius - x, RULES.wallRestitution);
+    if (x > 1024 - radius) contact(-1, 0, x - (1024 - radius), RULES.wallRestitution);
+    if (y < radius) contact(0, 1, radius - y, RULES.wallRestitution);
+    if (y >= 590 - radius) {
+      contact(0, -1, y - (590 - radius), RULES.ballRestitution);
+      if (Math.abs(vy) < RULES.ballGravity * dt) vy = 0;
+    }
+    Body.setPosition(this.ball, { x, y });
+    Body.setVelocity(this.ball, { x: vx, y: vy });
+    this.limitBallSpeed();
   }
 
   snapshot(): Snapshot {
