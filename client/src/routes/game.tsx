@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { IRefPhaserGame, PhaserGame } from "../game/PhaserGame";
 import { Link, useLoaderData, useParams } from "react-router-dom";
 import { EventBus } from "../game/EventBus";
+import { controlHint, getControlBindings } from "../game/control-bindings";
 import "../layout/game.css";
 
 export function Game() {
@@ -10,6 +11,7 @@ export function Game() {
   const [muted, setMuted] = useState(false);
   const { pin } = useParams();
   const { roomId } = useLoaderData() as { roomId: string };
+  const controls = controlHint(getControlBindings());
 
   const onCurrentActiveScene = (scene: Phaser.Scene) => {
     if (scene.scene.key == "Preloader") {
@@ -34,6 +36,7 @@ export function Game() {
         <div className="game-screen" aria-label="Cancha de fútbol para dos jugadores">
           <PhaserGame ref={phaserRef} currentActiveScene={onCurrentActiveScene} />
         </div>
+        <p className="game-controls-hint" aria-label="Controles de la partida">{controls}</p>
         <footer className="game-room-strip">
           <span>SALA <strong>{pin}</strong></span>
           <span>La partida se pausa si alguno cambia de pestaña.</span>

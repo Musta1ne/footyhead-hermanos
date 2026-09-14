@@ -30,6 +30,7 @@ body:has(.arcade-menu) { min-height: 100vh; }
 .arcade-button:focus-visible, .arcade-back:focus-visible { outline: 3px solid #17487f; outline-offset: 5px; }
 .arcade-button:disabled { opacity: .65; cursor: wait; transform: none; }
 .arcade-button--large { width: min(100%, 360px); margin: 28px auto 20px; min-height: 76px; font-size: 32px; }
+.arcade-button--secondary { width: min(100%, 360px); margin: 0 auto 20px; min-height: 48px; font-size: 18px; }
 .arcade-button--gold { background: linear-gradient(#fff2a1, #ebd26a 49%, #cfaf48 51%, #efdb83); box-shadow: inset 0 0 0 2px #b4a060, inset 0 3px 6px #fff7d0, 0 4px 0 #655c35, 0 6px 9px #223b3555; }
 .arcade-caption { max-width: 320px; margin: auto; font-size: 15px; line-height: 1.5; color: #143a27; font-weight: 700; }
 .arcade-matchup { display: flex; align-items: center; justify-content: center; gap: 38px; margin: 38px 0 28px; }
@@ -49,6 +50,16 @@ body:has(.arcade-menu) { min-height: 100vh; }
 .arcade-room-help { font-size: 12px; line-height: 1.6; margin: 21px 0 0; color: #4a5944; }
 .arcade-back { display: inline-block; margin-top: 22px; padding: 10px 18px; border-radius: 6px; color: #183c28; background: #eff0ddd9; font-size: 14px; font-weight: 700; cursor: pointer; }
 .arcade-back:hover { background: #fff8df; }
+.arcade-controls-panel { text-align: left; }
+.arcade-controls-panel h2, .arcade-controls-panel .arcade-intro { text-align: center; }
+.arcade-bindings { display: grid; gap: 10px; margin: 22px 0 14px; }
+.arcade-binding-row { display: grid; grid-template-columns: 1fr minmax(120px, auto) auto; align-items: center; gap: 12px; min-height: 56px; padding: 8px 10px 8px 14px; border: 2px solid #80946c; border-radius: 8px; background: #e9efda; }
+.arcade-binding-row > span:first-child { font-weight: 700; }
+.arcade-key { min-width: 120px; padding: 8px 10px; border-radius: 5px; background: #fffdf0; color: #244928; font-weight: 800; text-align: center; }
+.arcade-button--small { width: auto; min-height: 38px; padding: 8px 13px; border-radius: 7px; font-size: 15px; }
+.arcade-button[aria-pressed="true"] { outline: 3px solid #a3321b; outline-offset: 2px; }
+.arcade-controls-status { min-height: 22px; margin: 12px 0 14px; color: #244928; font-size: 13px; font-weight: 700; }
+.arcade-controls-actions { margin-top: 14px; }
 .arcade-footer { width: calc(100% + 48px); padding: 17px 16px; background: linear-gradient(#526f30, #304f22); border-top: 4px solid #c2d396; text-align: center; color: #edf2d9; font-size: 10px; font-weight: 700; letter-spacing: 2px; }
 @media (max-width: 560px) {
   .arcade-menu { padding-top: 30px; }
@@ -58,6 +69,9 @@ body:has(.arcade-menu) { min-height: 100vh; }
   .arcade-brand h1 span { font-size: 34px; }
   .arcade-brand strong { font-size: 36px; }
   .arcade-panel { padding: 24px 18px; }
+  .arcade-binding-row { grid-template-columns: 1fr auto; }
+  .arcade-binding-row .arcade-key { grid-column: 1; grid-row: 2; text-align: left; }
+  .arcade-binding-row .arcade-button { grid-column: 2; grid-row: 1 / span 2; }
   .arcade-menu h2 { font-size: 27px; }
   .arcade-home { padding-top: 16px; }
   .arcade-eyebrow { letter-spacing: 1px; }

@@ -71,6 +71,12 @@ body:has(.game-page) {
   aspect-ratio: 4 / 3;
 }
 .game-screen canvas { display: block; }
+.game-controls-hint {
+  margin: 12px 0 0;
+  color: #fff3c2;
+  font: 13px Arial, sans-serif;
+  text-align: center;
+}
 .game-room-strip {
   display: flex;
   align-items: center;

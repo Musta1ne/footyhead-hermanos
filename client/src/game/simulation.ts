@@ -7,12 +7,16 @@ export const RULES = {
   stepMs: 1000 / 60, substeps: 3,
   speed: 3.75, acceleration: 0.65, releaseDrag: 0.82, jump: -4.3,
   playerGravity: 0.145, ballGravity: 0.1,
-  playerRadius: 22, ballRadius: 12, ballRestitution: 0.6, wallRestitution: 1,
-  maxBallSpeed: 14, serveY: 295, serveXSpeed: 3, serveYSpeed: -2.1,
+  // The original SWF uses 0.6 restitution, but the current 1024px arena
+  // makes that feel too lively. Keep a forgiving arcade kick while shortening
+  // free-flight and contact rebounds for a slower, more readable ball.
+  playerRadius: 22, ballRadius: 12, ballRestitution: 0.35, wallRestitution: 0.45,
+  ballDamping: 0.996,
+  maxBallSpeed: 10.5, serveY: 295, serveXSpeed: 2.5, serveYSpeed: -1.8,
   bootRadius: 8, bootOrbit: 23, bootRestAngle: 1.05,
   bootRaiseTicks: 3, bootLowerTicks: 8, bootTapTicks: 6, bootMotionTransfer: 0.55,
   bootWidth: 16, bootHeight: 18, goalPauseTicks: 45,
-  headRestitution: 0.65, bootRestitution: 0.6, kickX: 8, kickY: 5,
+  headRestitution: 0.4, bootRestitution: 0.45, kickX: 6, kickY: 4,
   inputTimeoutMs: 750, snapshotEveryTicks: 2,
   matchTicks: 60 * 60,
 };
@@ -243,7 +247,9 @@ export class Simulation {
   private stepBall() {
     const dt = 1 / RULES.substeps, radius = RULES.ballRadius;
     let { x, y } = this.ball.position;
-    let vx = this.ball.velocity.x, vy = this.ball.velocity.y + RULES.ballGravity * dt;
+    const damping = RULES.ballDamping ** dt;
+    let vx = this.ball.velocity.x * damping;
+    let vy = (this.ball.velocity.y + RULES.ballGravity * dt) * damping;
     x += vx * dt; y += vy * dt;
     const contact = (nx: number, ny: number, depth: number, restitution: number, ux = 0, uy = 0) => {
       x += nx * (depth + 0.000001); y += ny * (depth + 0.000001);

@@ -4,7 +4,7 @@ Adaptación de [azaidi4/footyhead](https://github.com/azaidi4/footyhead). Conser
 
 ## Jugar online
 
-Abrí [Footy Head online](https://footyhead-hermanos.elbarrilfumanchero.chatgpt.site).
+Abrí [Footy Head online](https://footyhead-hermanos-agustin.agustinmacello.chatgpt.site).
 
 1. Elegí **Jugar online → Crear sala**.
 2. Copiá el enlace y compartilo con otra persona.

@@ -2,14 +2,15 @@ import Phaser, { Scene } from "phaser";
 import { Peer } from "../peer";
 import { ARCADE_FONT, drawGoal, drawStadium } from "./stadium";
 import { Simulation, RULES, bootPose, emptyInput, isInput, type Input, type Snapshot } from "../simulation";
-
-const CONTROLS = "¡A jugar! Que gane el mejor.";
+import { controlHint, controlKeyCode, getControlBindings, type ControlBindings } from "../control-bindings";
 
 export class Game extends Scene {
   private pin = "";
   private sim: Simulation;
   private peer: Peer;
-  private keys: Record<string, Phaser.Input.Keyboard.Key>;
+  private keys: Record<"left" | "right" | "jump" | "kick", Phaser.Input.Keyboard.Key>;
+  private bindings: ControlBindings;
+  private controlsHint: string;
   private heads: Phaser.GameObjects.Image[];
   private boots: Phaser.GameObjects.Image[];
   private ball: Phaser.GameObjects.Image;
@@ -40,7 +41,14 @@ export class Game extends Scene {
 
   create() {
     this.sim = new Simulation();
-    this.keys = this.input.keyboard!.addKeys("UP, LEFT, RIGHT, SPACE") as typeof this.keys;
+    this.bindings = getControlBindings();
+    this.controlsHint = controlHint(this.bindings);
+    this.keys = {
+      left: this.input.keyboard!.addKey(controlKeyCode(this.bindings.left)!),
+      right: this.input.keyboard!.addKey(controlKeyCode(this.bindings.right)!),
+      jump: this.input.keyboard!.addKey(controlKeyCode(this.bindings.jump)!),
+      kick: this.input.keyboard!.addKey(controlKeyCode(this.bindings.kick)!),
+    };
     drawStadium(this);
     drawGoal(this, false);
     drawGoal(this, true);
@@ -73,7 +81,7 @@ export class Game extends Scene {
       this.replayPanel.setVisible(false);
     });
     this.peer.onReady = () => {
-      this.status.setText(CONTROLS);
+      this.status.setText(this.controlsHint);
       this.peer.send({ type: "visibility", hidden: document.hidden }, true);
       if (this.peer.host) {
         this.started = true;
@@ -137,7 +145,7 @@ export class Game extends Scene {
     const paused = document.hidden || this.remoteHidden;
     if (this.peer.ready && this.started) {
       const result = this.sim.winner === null ? "Empate" : `Ganó el jugador ${this.sim.winner === 1 ? "izquierdo" : "derecho"}`;
-      this.status.setText(this.confirmedFinished ? `¡Terminó el partido! ${result}` : paused ? "Partida pausada: los dos deben volver a la pestaña del juego." : CONTROLS);
+      this.status.setText(this.confirmedFinished ? `¡Terminó el partido! ${result}` : paused ? "Partida pausada: los dos deben volver a la pestaña del juego." : this.controlsHint);
       this.pingText.setText(`Conexión ${this.peer.route}: ${this.peer.rtt ? Math.round(this.peer.rtt) + " ms" : "midiendo…"} · Jugás a la ${this.peer.host ? "izquierda" : "derecha"}`);
       this.networkText.setText(this.peer.route === "por servidor"
         ? `Respaldo HTTPS: puede tener mucha demora. ${this.peer.networkNote || "WebRTC no logró conectar."}`
@@ -157,12 +165,12 @@ export class Game extends Scene {
     this.replayButton.setAlpha(ready ? 0.7 : 1);
     if (this.confirmedFinished || this.sim.finished) { this.accumulator = 0; this.renderBodies(delta); return; }
     if (!this.started || !this.peer.ready || paused) { this.accumulator = 0; return; }
-    const { UP, LEFT, RIGHT, SPACE } = this.keys;
-    this.local.direction = LEFT.isDown ? -1 : RIGHT.isDown ? 1 : 0;
-    this.local.jumpHeld = UP.isDown;
-    this.local.kickHeld = SPACE.isDown;
-    if (Phaser.Input.Keyboard.JustDown(UP)) this.local.jump++;
-    if (Phaser.Input.Keyboard.JustDown(SPACE)) this.local.kick++;
+    const { jump, left, right, kick } = this.keys;
+    this.local.direction = left.isDown ? -1 : right.isDown ? 1 : 0;
+    this.local.jumpHeld = jump.isDown;
+    this.local.kickHeld = kick.isDown;
+    if (Phaser.Input.Keyboard.JustDown(jump)) this.local.jump++;
+    if (Phaser.Input.Keyboard.JustDown(kick)) this.local.kick++;
     this.accumulator += Math.min(delta, 100);
     while (this.accumulator >= RULES.stepMs) {
       this.accumulator -= RULES.stepMs;
