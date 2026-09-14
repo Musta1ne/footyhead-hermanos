@@ -59,13 +59,13 @@ el formato de snapshots no cambia.
 | Salida X de patada | 8 px/paso | 6 px/paso | Patada inmediata, con menor alcance |
 | Salida Y de patada | -5 px/paso | -4 px/paso | Arco de patada mas bajo |
 | Limite de velocidad | 14 px/paso | 10,5 px/paso | Tope contra tiros incontrolables |
-| Restitucion del suelo | 0,6 | 0,35 | Primer rebote conserva aproximadamente 35% |
+| Restitucion del suelo | 0,6 | 0,48 | Primer rebote conserva aproximadamente 48% |
 | Restitucion de cabeza | 0,65 | 0,4 | Contactos devuelven menos energia |
 | Restitucion de bota | 0,6 | 0,45 | Pie levantado bloquea sin catapultar |
 | Restitucion de paredes/postes | 1 | 0,45 | Dejan de ser trampolines |
-| Damping del balon | ninguno | 0,996 por paso | Vuelo y rodadura pierden velocidad gradualmente |
+| Damping del balon | ninguno | 0,998 por paso | Vuelo y rodadura conservan mejor el impulso horizontal |
 
-El damping se aplica en cada subpaso como `0,996^(1/3)`, equivalente a 0,996
+El damping se aplica en cada subpaso como `0,998^(1/3)`, equivalente a 0,998
 por tick de 60 Hz. No se aplica friccion tangencial artificial en contactos:
 la pelota sigue pudiendo rodar y las patadas siguen respondiendo al primer
 paso.
@@ -89,7 +89,7 @@ paso.
 - Fuera de esa ventana, el pie rebota con restitucion 0,45 segun la normal de
   contacto. Sobre una cara horizontal invierte vy; sobre una cara lateral
   invierte vx, evitando que el balon atraviese el costado de la bota.
-- Suelo en y=590, restitucion 0,35; paredes, techo y travesanos con
+- Suelo en y=590, restitucion 0,48; paredes, techo y travesanos con
   restitucion 0,45. Los travesanos conservan sus cajas inclinadas +/-0,05 rad.
   Solo se rebota si el balon se acerca; siempre se corrige la penetracion.
   Los rebotes minimos se estabilizan en el piso sin consumir velocidad

@@ -26,8 +26,36 @@ test("la pelota tiene una salida contenida y pierde velocidad entre contactos", 
       sim.step(emptyInput(), emptyInput());
       if (before > 0 && sim.ball.velocity.y < 0) { rebound = -sim.ball.velocity.y / before; break; }
     }
-    assert.ok(rebound > 0.25 && rebound < 0.45, `restitución ${rebound}`);
+    assert.ok(rebound > 0.45 && rebound < 0.51, `restitución ${rebound}`);
   } finally { sim.destroy(); }
+});
+
+test("la pelota conserva mejor la velocidad horizontal y tiene un rebote más vivo", () => {
+  const sim = new Simulation();
+  try {
+    Matter.Body.setPosition(sim.ball, { x: 512, y: 300 });
+    Matter.Body.setVelocity(sim.ball, { x: 3, y: 0 });
+    for (let i = 0; i < 60; i++) sim.step(emptyInput(), emptyInput());
+    assert.ok(
+      sim.ball.velocity.x > 2.64 && sim.ball.velocity.x < 2.73,
+      `velocidad horizontal ${sim.ball.velocity.x}`,
+    );
+
+    Matter.Body.setPosition(sim.ball, { x: 512, y: 300 });
+    Matter.Body.setVelocity(sim.ball, { x: 0, y: 0 });
+    let rebound = 0;
+    for (let i = 0; i < 120; i++) {
+      const before = sim.ball.velocity.y;
+      sim.step(emptyInput(), emptyInput());
+      if (before > 0 && sim.ball.velocity.y < 0) {
+        rebound = -sim.ball.velocity.y / before;
+        break;
+      }
+    }
+    assert.ok(rebound > 0.45 && rebound < 0.51, `restitución ${rebound}`);
+  } finally {
+    sim.destroy();
+  }
 });
 
 test("círculo contra caja resuelve caras, esquinas y centros interiores", () => {
@@ -119,8 +147,8 @@ test("la pelota rueda varios segundos y pierde velocidad gradualmente", () => {
     Matter.Body.setPosition(sim.ball, { x: 512, y: 578 });
     Matter.Body.setVelocity(sim.ball, { x: 0.3, y: 0 });
     for (let i = 0; i < 300; i++) sim.step(emptyInput(), emptyInput());
-    assert.ok(sim.ball.position.x > 550 && sim.ball.position.x < 580, `posición ${sim.ball.position.x}`);
-    assert.ok(sim.ball.velocity.x > 0.05 && sim.ball.velocity.x < 0.13);
+    assert.ok(sim.ball.position.x > 570 && sim.ball.position.x < 590, `posición ${sim.ball.position.x}`);
+    assert.ok(sim.ball.velocity.x > 0.14 && sim.ball.velocity.x < 0.18);
   } finally { sim.destroy(); }
 });
 
@@ -262,7 +290,7 @@ test("la pelota cae más despacio que la cabeza y conserva velocidad horizontal 
     for (let i = 0; i < 30; i++) sim.step(emptyInput(), emptyInput());
     assert.ok(sim.ball.position.y > 242 && sim.ball.position.y < 246);
     assert.ok(sim.players[0].position.y > 264 && sim.players[0].position.y < 268);
-    assert.ok(Math.abs(sim.ball.position.x - 597) < 0.5);
+    assert.ok(Math.abs(sim.ball.position.x - 599.3) < 0.5);
   } finally { sim.destroy(); }
 });
 
@@ -279,7 +307,7 @@ test("los rebotes libres pierden altura y la pelota no atraviesa el travesaño",
       oldVy = sim.ball.velocity.y;
     }
     assert.equal(peaks.length, 2);
-    assert.ok(peaks[0] > 8 && peaks[0] < 30);
+    assert.ok(peaks[0] > 30 && peaks[0] < 45);
     assert.ok(peaks[1] > 0.5 && peaks[1] < peaks[0] * 0.7);
     Matter.Body.setPosition(sim.ball, { x: 40, y: 430 });
     Matter.Body.setVelocity(sim.ball, { x: 0, y: 14 });
@@ -407,7 +435,7 @@ test("la patada activa tiene salida fija y simétrica en ambos lados", () => {
   assert.ok(Math.abs(results[0] - results[2]) < 0.2, "los dos lados tienen la misma física");
 });
 
-test("el rebote libre conserva aproximadamente el 35 por ciento de velocidad vertical", () => {
+test("el rebote libre conserva aproximadamente el 48 por ciento de velocidad vertical", () => {
   const sim = new Simulation();
   try {
     Matter.Body.setPosition(sim.ball, { x: 512, y: 300 });
@@ -418,7 +446,7 @@ test("el rebote libre conserva aproximadamente el 35 por ciento de velocidad ver
       sim.step(emptyInput(), emptyInput());
       if (before > 0 && sim.ball.velocity.y < 0) { rebound = -sim.ball.velocity.y / before; break; }
     }
-    assert.ok(rebound > 0.30 && rebound < 0.38, `restitución ${rebound}`);
+    assert.ok(rebound > 0.45 && rebound < 0.51, `restitución ${rebound}`);
   } finally { sim.destroy(); }
 });
 

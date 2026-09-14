@@ -7,11 +7,10 @@ export const RULES = {
   stepMs: 1000 / 60, substeps: 3,
   speed: 3.75, acceleration: 0.65, releaseDrag: 0.82, jump: -4.3,
   playerGravity: 0.145, ballGravity: 0.1,
-  // The original SWF uses 0.6 restitution, but the current 1024px arena
-  // makes that feel too lively. Keep a forgiving arcade kick while shortening
-  // free-flight and contact rebounds for a slower, more readable ball.
-  playerRadius: 22, ballRadius: 12, ballRestitution: 0.35, wallRestitution: 0.45,
-  ballDamping: 0.996,
+  // The original SWF uses 0.6 restitution. Keep this arena a little calmer
+  // while preserving enough energy for visible rebounds and longer passes.
+  playerRadius: 22, ballRadius: 12, ballRestitution: 0.48, wallRestitution: 0.45,
+  ballDamping: 0.998,
   maxBallSpeed: 10.5, serveY: 295, serveXSpeed: 2.5, serveYSpeed: -1.8,
   bootRadius: 8, bootOrbit: 23, bootRestAngle: 1.05,
   bootRaiseTicks: 3, bootLowerTicks: 8, bootTapTicks: 6, bootMotionTransfer: 0.55,
