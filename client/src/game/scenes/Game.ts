@@ -1,16 +1,18 @@
 import Phaser, { Scene } from "phaser";
 import { Peer } from "../peer";
-import { ARCADE_FONT, drawGoal, drawStadium } from "./stadium";
+import { ARCADE_FONT, drawGoal, drawStadium, updateStadiumControls, type StadiumControls } from "./stadium";
 import { Simulation, RULES, bootPose, emptyInput, isInput, type Input, type Snapshot } from "../simulation";
-
-const CONTROLS = "¡A jugar! Que gane el mejor.";
+import { formatControlsHint, loadKeyBindings, subscribeKeyBindings, toPhaserKeyCode, type ControlAction, type KeyBindings } from "../keys";
 
 export class Game extends Scene {
   private pin = "";
   private sim: Simulation;
   private peer: Peer;
-  private keys: Record<string, Phaser.Input.Keyboard.Key>;
+  private keys: Record<ControlAction, Phaser.Input.Keyboard.Key>;
+  private keyBindings: KeyBindings = loadKeyBindings();
+  private unsubscribeKeyBindings: (() => void) | null = null;
   private heads: Phaser.GameObjects.Image[];
+  private stadiumControls: StadiumControls;
   private boots: Phaser.GameObjects.Image[];
   private ball: Phaser.GameObjects.Image;
   private scoreText: Phaser.GameObjects.Text;
@@ -40,8 +42,8 @@ export class Game extends Scene {
 
   create() {
     this.sim = new Simulation();
-    this.keys = this.input.keyboard!.addKeys("UP, LEFT, RIGHT, SPACE") as typeof this.keys;
-    drawStadium(this);
+    this.rebindControls(this.keyBindings);
+    this.stadiumControls = drawStadium(this, this.keyBindings);
     drawGoal(this, false);
     drawGoal(this, true);
     this.heads = [1, 2].map(team => this.add.image(0, 0, `sprite-${team}`).setFlipX(team === 2));
@@ -67,13 +69,19 @@ export class Game extends Scene {
     this.status = this.add.text(512, 115, "Preparando conexión…", { fontFamily: "Arial", fontSize: "20px", color: "#23472d", backgroundColor: "#e7edda", padding: { x: 16, y: 10 }, align: "center", wordWrap: { width: 680 } }).setOrigin(0.5);
     this.pingText = this.add.text(512, 712, "Esperando al otro jugador…", { fontFamily: "Arial", fontSize: "16px", color: "#eef0da" }).setOrigin(0.5);
     this.networkText = this.add.text(512, 742, "", { fontFamily: "Arial", fontSize: "14px", color: "#ffe6a2", align: "center", wordWrap: { width: 960 } }).setOrigin(0.5);
+    this.unsubscribeKeyBindings = subscribeKeyBindings(bindings => {
+      this.keyBindings = bindings;
+      this.rebindControls(bindings);
+      updateStadiumControls(this.stadiumControls, bindings);
+      this.status.setText(formatControlsHint(bindings));
+    });
     this.peer = new Peer(this.pin, text => this.status.setText(text), text => {
       this.started = false; this.releaseControls(this.local); this.status.setText(text);
       this.replayButton.setVisible(false);
       this.replayPanel.setVisible(false);
     });
     this.peer.onReady = () => {
-      this.status.setText(CONTROLS);
+      this.status.setText(formatControlsHint(this.keyBindings));
       this.peer.send({ type: "visibility", hidden: document.hidden }, true);
       if (this.peer.host) {
         this.started = true;
@@ -90,6 +98,8 @@ export class Game extends Scene {
     document.addEventListener("visibilitychange", visibility);
     this.events.once("shutdown", () => {
       this.peer.close(); this.sim.destroy();
+      this.unsubscribeKeyBindings?.();
+      this.unsubscribeKeyBindings = null;
       this.game.events.off("blur", release);
       document.removeEventListener("visibilitychange", visibility);
     });
@@ -137,7 +147,7 @@ export class Game extends Scene {
     const paused = document.hidden || this.remoteHidden;
     if (this.peer.ready && this.started) {
       const result = this.sim.winner === null ? "Empate" : `Ganó el jugador ${this.sim.winner === 1 ? "izquierdo" : "derecho"}`;
-      this.status.setText(this.confirmedFinished ? `¡Terminó el partido! ${result}` : paused ? "Partida pausada: los dos deben volver a la pestaña del juego." : CONTROLS);
+      this.status.setText(this.confirmedFinished ? `¡Terminó el partido! ${result}` : paused ? "Partida pausada: los dos deben volver a la pestaña del juego." : formatControlsHint(this.keyBindings));
       this.pingText.setText(`Conexión ${this.peer.route}: ${this.peer.rtt ? Math.round(this.peer.rtt) + " ms" : "midiendo…"} · Jugás a la ${this.peer.host ? "izquierda" : "derecha"}`);
       this.networkText.setText(this.peer.route === "por servidor"
         ? `Respaldo HTTPS: puede tener mucha demora. ${this.peer.networkNote || "WebRTC no logró conectar."}`
@@ -157,12 +167,12 @@ export class Game extends Scene {
     this.replayButton.setAlpha(ready ? 0.7 : 1);
     if (this.confirmedFinished || this.sim.finished) { this.accumulator = 0; this.renderBodies(delta); return; }
     if (!this.started || !this.peer.ready || paused) { this.accumulator = 0; return; }
-    const { UP, LEFT, RIGHT, SPACE } = this.keys;
-    this.local.direction = LEFT.isDown ? -1 : RIGHT.isDown ? 1 : 0;
-    this.local.jumpHeld = UP.isDown;
-    this.local.kickHeld = SPACE.isDown;
-    if (Phaser.Input.Keyboard.JustDown(UP)) this.local.jump++;
-    if (Phaser.Input.Keyboard.JustDown(SPACE)) this.local.kick++;
+    const { left, right, jump, kick } = this.keys;
+    this.local.direction = left.isDown ? -1 : right.isDown ? 1 : 0;
+    this.local.jumpHeld = jump.isDown;
+    this.local.kickHeld = kick.isDown;
+    if (Phaser.Input.Keyboard.JustDown(jump)) this.local.jump++;
+    if (Phaser.Input.Keyboard.JustDown(kick)) this.local.kick++;
     this.accumulator += Math.min(delta, 100);
     while (this.accumulator >= RULES.stepMs) {
       this.accumulator -= RULES.stepMs;
@@ -193,6 +203,22 @@ export class Game extends Scene {
     this.pending = []; this.accumulator = 0;
     this.input.keyboard?.resetKeys();
     this.corrections = this.corrections.map(() => ({ x: 0, y: 0 }));
+  }
+
+  private rebindControls(bindings: KeyBindings) {
+    const keyboard = this.input.keyboard;
+    if (!keyboard) return;
+    if (this.keys) {
+      Object.values(this.keys).forEach(key => keyboard.removeKey(key.keyCode));
+    }
+    this.keys = {
+      left: keyboard.addKey(toPhaserKeyCode(bindings.left)),
+      right: keyboard.addKey(toPhaserKeyCode(bindings.right)),
+      jump: keyboard.addKey(toPhaserKeyCode(bindings.jump)),
+      kick: keyboard.addKey(toPhaserKeyCode(bindings.kick)),
+    };
+    keyboard.resetKeys();
+    this.releaseControls(this.local);
   }
 
   private releaseControls(input: Input) {

@@ -1,15 +1,19 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { IRefPhaserGame, PhaserGame } from "../game/PhaserGame";
 import { Link, useLoaderData, useParams } from "react-router-dom";
 import { EventBus } from "../game/EventBus";
+import { formatControlsHint, loadKeyBindings, subscribeKeyBindings, type KeyBindings } from "../game/keys";
 import "../layout/game.css";
 
 export function Game() {
   //  References to the PhaserGame component (game and scene are exposed)
   const phaserRef = useRef<IRefPhaserGame | null>(null);
   const [muted, setMuted] = useState(false);
+  const [bindings, setBindings] = useState<KeyBindings>(() => loadKeyBindings());
   const { pin } = useParams();
   const { roomId } = useLoaderData() as { roomId: string };
+
+  useEffect(() => subscribeKeyBindings(setBindings), []);
 
   const onCurrentActiveScene = (scene: Phaser.Scene) => {
     if (scene.scene.key == "Preloader") {
@@ -34,6 +38,7 @@ export function Game() {
         <div className="game-screen" aria-label="Cancha de fútbol para dos jugadores">
           <PhaserGame ref={phaserRef} currentActiveScene={onCurrentActiveScene} />
         </div>
+        <p className="game-controls-hint" aria-live="polite">{formatControlsHint(bindings)}</p>
         <footer className="game-room-strip">
           <span>SALA <strong>{pin}</strong></span>
           <span>La partida se pausa si alguno cambia de pestaña.</span>

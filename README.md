@@ -11,7 +11,7 @@ Abrí [Footy Head online](https://footyhead-hermanos.elbarrilfumanchero.chatgpt.
 3. Tocá **Entrar a jugar** con el mismo navegador donde creaste la sala. Sos el jugador izquierdo y tu navegador lleva la partida. Se conserva tu lugar aunque abras el enlace en otra pestaña; sólo puede haber una pestaña activa de esa sala.
 4. La persona invitada abre el enlace en su computadora y juega a la derecha. La partida comienza al conectarse.
 
-Ambos usan **← y → para moverse, ↑ para saltar y Espacio para patear**. Hacé clic en el juego si las teclas no responden. No se necesita cámara ni micrófono.
+Por defecto, ambos usan **← y → para moverse, ↑ para saltar y Espacio para patear**. Podés cambiar tus teclas desde **Personalizar teclas** en el menú; cada jugador guarda su configuración en su propio navegador y el tutorial de la cancha muestra las teclas elegidas. Hacé clic en el juego si las teclas no responden. No se necesita cámara ni micrófono.
 
 Mantengan el juego visible: cambiar de pestaña pausa la partida para los dos. Si alguno cierra o recarga, creen otra sala. Las invitaciones sin uso vencen a los 15 minutos; las partidas por servidor mantienen su sala activa mientras juegan.
 

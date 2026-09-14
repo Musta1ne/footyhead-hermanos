@@ -1,18 +1,38 @@
 import Matter from "matter-js";
 
+// El SWF original usa unidades de pantalla (800 px), 30 FPS y una escala de
+// tiempo de 1/96 s por subpaso. Esta versión corre la simulación a 60 Hz en
+// un escenario de 1024 px; las velocidades y la gravedad del balón se
+// convierten a px/tick, sin alterar el protocolo de snapshots.
+const ORIGINAL_WORLD_WIDTH = 800;
+const PROJECT_WORLD_WIDTH = 1024;
+const PROJECT_TICK_HZ = 60;
+const ORIGINAL_DISPLAY_FPS = 30;
+const ORIGINAL_PHYSICS_STEP_SECONDS = 1 / 96;
+const ORIGINAL_PHYSICS_STEPS_PER_DISPLAY_FRAME = 3;
+const ORIGINAL_TO_PROJECT = PROJECT_WORLD_WIDTH / ORIGINAL_WORLD_WIDTH;
+// The source advances 3/96 seconds per 30 FPS frame. Two target ticks map
+// to one source display frame, so one target tick represents 1/64 source s.
+const targetTickSeconds = ORIGINAL_PHYSICS_STEP_SECONDS * ORIGINAL_PHYSICS_STEPS_PER_DISPLAY_FRAME
+  / (PROJECT_TICK_HZ / ORIGINAL_DISPLAY_FPS);
+const originalVelocity = (value: number) => value * ORIGINAL_TO_PROJECT * targetTickSeconds;
+const originalAcceleration = (value: number) => value * ORIGINAL_TO_PROJECT * targetTickSeconds ** 2;
+
 // Única definición de las reglas: anfitrión y predicción usan la misma física.
 export const RULES = {
   // Velocidades en px/paso de 60 Hz, aceleraciones en px/paso².
-  // Medidas y márgenes de la referencia en PHYSICS.md.
+  // Las magnitudes del balón salen de physics/parameters.json del clon original.
   stepMs: 1000 / 60, substeps: 3,
   speed: 3.75, acceleration: 0.65, releaseDrag: 0.82, jump: -4.3,
-  playerGravity: 0.145, ballGravity: 0.1,
-  playerRadius: 22, ballRadius: 12, ballRestitution: 0.6, wallRestitution: 1,
-  maxBallSpeed: 14, serveY: 295, serveXSpeed: 3, serveYSpeed: -2.1,
+  playerGravity: 0.145, ballGravity: originalAcceleration(300),
+  playerRadius: 22, ballRadius: 12, ballRestitution: 0.6, wallRestitution: 0,
+  headRestitution: 0.01, bootRestitution: 1,
+  ballFriction: 1, surfaceFriction: 0.5, headFriction: 0,
+  restitutionVelocityThreshold: originalVelocity(1),
+  serveY: 295, serveXSpeed: originalVelocity(150), serveYSpeed: originalVelocity(-100),
   bootRadius: 8, bootOrbit: 23, bootRestAngle: 1.05,
   bootRaiseTicks: 3, bootLowerTicks: 8, bootTapTicks: 6, bootMotionTransfer: 0.55,
   bootWidth: 16, bootHeight: 18, goalPauseTicks: 45,
-  headRestitution: 0.65, bootRestitution: 0.6, kickX: 8, kickY: 5,
   inputTimeoutMs: 750, snapshotEveryTicks: 2,
   matchTicks: 60 * 60,
 };
@@ -56,10 +76,9 @@ export class Simulation {
   engine = Engine.create({ gravity: { x: 0, y: 1, scale: RULES.ballGravity / RULES.stepMs ** 2 } });
   players = [200, 824].map(x => Bodies.circle(x, 550, RULES.playerRadius, { mass: 20, restitution: 0, friction: 0, frictionAir: 0, inertia: Infinity,
     collisionFilter: { category: COLLISION.head, group: Body.nextGroup(true) } }));
-  // Sin torque físico: la rotación visual no modifica la normal de rebote.
-  // El círculo mantiene su orientación; el balón puede rodar sin frenarse.
-  // Contenedor de estado compatible con snapshots; no se integra en Matter.
-  ball = Bodies.circle(512, RULES.serveY, RULES.ballRadius, { mass: 1, frictionAir: 0, inertia: Infinity,
+  // El balón se integra fuera de Matter para conservar el contrato de
+  // snapshots y resolver sus contactos de forma determinista en ambas casas.
+  ball = Bodies.circle(512, RULES.serveY, RULES.ballRadius, { mass: 1, friction: RULES.ballFriction, frictionAir: 0, inertia: Infinity,
     collisionFilter: { category: COLLISION.ball, mask: 0 } });
   feet: [FootState, FootState] = [{ lift: 0, tapTicks: 0 }, { lift: 0, tapTicks: 0 }];
   boots = this.players.map(player => Bodies.circle(player.position.x, player.position.y, RULES.bootRadius, {
@@ -161,13 +180,13 @@ export class Simulation {
         Body.applyForce(player, player.position, { x: 0, y: player.mass * (RULES.playerGravity - RULES.ballGravity) / RULES.stepMs ** 2 });
         this.moveBoot(i, next[i].kickHeld || this.feet[i].tapTicks > 0);
       });
-      this.limitBallSpeed();
       Engine.update(this.engine, RULES.stepMs / RULES.substeps);
-      this.limitBallSpeed();
-      this.ballRotation = (this.ballRotation + this.ball.velocity.x / RULES.ballRadius / RULES.substeps) % (Math.PI * 2);
       this.syncBoots();
       this.resolveBootPair();
       this.stepBall();
+      // The original ball is not fixed-rotation; integrate the contact spin
+      // in the same target-tick units used by the explicit linear solver.
+      this.ballRotation = (this.ballRotation + this.ball.angularVelocity / RULES.substeps) % (Math.PI * 2);
     }
     this.feet.forEach(foot => { foot.tapTicks = Math.max(0, foot.tapTicks - 1); });
     const { x, y } = this.ball.position;
@@ -235,31 +254,41 @@ export class Simulation {
     this.syncBoots();
   }
 
-  private limitBallSpeed() {
-    const speed = Math.hypot(this.ball.velocity.x, this.ball.velocity.y);
-    if (speed > RULES.maxBallSpeed) Body.setVelocity(this.ball, { x: this.ball.velocity.x * RULES.maxBallSpeed / speed, y: this.ball.velocity.y * RULES.maxBallSpeed / speed });
-  }
-
   private stepBall() {
     const dt = 1 / RULES.substeps, radius = RULES.ballRadius;
     let { x, y } = this.ball.position;
     let vx = this.ball.velocity.x, vy = this.ball.velocity.y + RULES.ballGravity * dt;
+    let spin = this.ball.angularVelocity;
     x += vx * dt; y += vy * dt;
-    const contact = (nx: number, ny: number, depth: number, restitution: number, ux = 0, uy = 0) => {
+    const contact = (nx: number, ny: number, depth: number, restitution: number, friction: number, ux = 0, uy = 0) => {
       x += nx * (depth + 0.000001); y += ny * (depth + 0.000001);
       const relative = (vx - ux) * nx + (vy - uy) * ny;
-      if (relative < 0) {
-        const impulse = -(1 + restitution) * relative;
-        vx += impulse * nx; vy += impulse * ny;
-      }
+      if (relative >= 0) return;
+      // Box2D only adds restitution above b2_velocityThreshold (1 source
+      // unit/s); below it the contact removes the approach without a bounce.
+      const impulse = -relative * (1 + (relative < -RULES.restitutionVelocityThreshold ? restitution : 0));
+      vx += impulse * nx; vy += impulse * ny;
+      // The original mixes friction as sqrt(ball * surface). Applying the
+      // bounded tangent impulse keeps horizontal motion from being lost in
+      // flight while allowing the floor and the boot to grip on contact.
+      const tangentX = -ny, tangentY = nx;
+      // For a circle I = m r² / 2, so the angular contribution to the
+      // relative tangent speed is spin * radius and the angular impulse is
+      // -2 * tangentImpulse / radius (mass is normalised to one here).
+      const tangentVelocity = (vx - ux) * tangentX + (vy - uy) * tangentY - spin * radius;
+      const tangentImpulse = Math.max(-friction * impulse, Math.min(friction * impulse, -tangentVelocity));
+      vx += tangentImpulse * tangentX;
+      vy += tangentImpulse * tangentY;
+      spin -= 2 * tangentImpulse / radius;
     };
-    // Primero la bota: una patada baja debe poder alcanzar la pelota junto a la cabeza.
-    this.boots.forEach((boot, i) => {
+    const effectiveRestitution = (other: number) => Math.max(RULES.ballRestitution, other);
+    const effectiveFriction = (other: number) => Math.sqrt(RULES.ballFriction * other);
+    // Primero la bota: el rebote original sale de su velocidad y restitución,
+    // no de un impulso fijo al pulsar la tecla.
+    this.boots.forEach((boot) => {
       const hit = circleBox(x - boot.position.x, y - boot.position.y, radius, RULES.bootWidth / 2, RULES.bootHeight / 2);
       if (!hit) return;
-      const active = this.tick - this.kicks[i] < RULES.bootRaiseTicks;
-      contact(hit.nx, hit.ny, hit.depth, RULES.bootRestitution);
-      if (active) { vx = (i === 0 ? 1 : -1) * RULES.kickX; vy = -RULES.kickY; }
+      contact(hit.nx, hit.ny, hit.depth, effectiveRestitution(RULES.bootRestitution), effectiveFriction(RULES.surfaceFriction), boot.velocity.x, boot.velocity.y);
     });
     this.players.forEach((player, i) => {
       const dx = x - player.position.x, dy = y - player.position.y;
@@ -268,24 +297,24 @@ export class Simulation {
       // Coincidencia exacta: normal estable, sin división por cero.
       const nx = distance > 0 ? dx / distance : i === 0 ? 1 : -1;
       const ny = distance > 0 ? dy / distance : 0;
-      contact(nx, ny, overlap, RULES.headRestitution, player.velocity.x, player.velocity.y);
+      contact(nx, ny, overlap, effectiveRestitution(RULES.headRestitution), RULES.headFriction, player.velocity.x, player.velocity.y);
     });
     // Las barras conservan su inclinación visual: círculo contra caja en su espacio local.
     for (const [cx, angle] of [[40, 0.05], [984, -0.05]]) {
       const cos = Math.cos(angle), sin = Math.sin(angle), dx = x - cx, dy = y - 465;
       const hit = circleBox(dx * cos + dy * sin, -dx * sin + dy * cos, radius, 40, 2.5);
-      if (hit) contact(hit.nx * cos - hit.ny * sin, hit.nx * sin + hit.ny * cos, hit.depth, RULES.wallRestitution);
+      if (hit) contact(hit.nx * cos - hit.ny * sin, hit.nx * sin + hit.ny * cos, hit.depth, effectiveRestitution(RULES.wallRestitution), effectiveFriction(RULES.surfaceFriction));
     }
-    if (x < radius) contact(1, 0, radius - x, RULES.wallRestitution);
-    if (x > 1024 - radius) contact(-1, 0, x - (1024 - radius), RULES.wallRestitution);
-    if (y < radius) contact(0, 1, radius - y, RULES.wallRestitution);
+    if (x < radius) contact(1, 0, radius - x, effectiveRestitution(RULES.wallRestitution), effectiveFriction(RULES.surfaceFriction));
+    if (x > 1024 - radius) contact(-1, 0, x - (1024 - radius), effectiveRestitution(RULES.wallRestitution), effectiveFriction(RULES.surfaceFriction));
+    if (y < radius) contact(0, 1, radius - y, effectiveRestitution(RULES.wallRestitution), effectiveFriction(RULES.surfaceFriction));
     if (y >= 590 - radius) {
-      contact(0, -1, y - (590 - radius), RULES.ballRestitution);
+      contact(0, -1, y - (590 - radius), RULES.ballRestitution, effectiveFriction(RULES.surfaceFriction));
       if (Math.abs(vy) < RULES.ballGravity * dt) vy = 0;
     }
     Body.setPosition(this.ball, { x, y });
     Body.setVelocity(this.ball, { x: vx, y: vy });
-    this.limitBallSpeed();
+    Body.setAngularVelocity(this.ball, spin);
   }
 
   snapshot(): Snapshot {

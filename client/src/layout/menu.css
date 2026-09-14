@@ -65,3 +65,25 @@ body:has(.arcade-menu) { min-height: 100vh; }
 }
 @media (prefers-reduced-motion: reduce) { .arcade-button { transition: none; } }
 .arcade-caption { padding: 10px 14px; border-radius: 6px; background: #f1f0dfe8; }
+.arcade-button--controls { width: min(100%, 360px); margin: 0 auto 20px; min-height: 54px; font-size: 22px; }
+.arcade-controls { text-align: left; }
+.arcade-controls h2, .arcade-controls .arcade-intro { text-align: center; }
+.arcade-controls-list { display: grid; gap: 10px; margin: 24px 0 14px; }
+.arcade-control-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 13px 14px; border: 2px solid #80946c; border-radius: 9px; background: #e9efda; box-shadow: inset 0 2px 4px #4a653522; }
+.arcade-control-copy { display: grid; gap: 4px; }
+.arcade-control-copy strong { font-size: 15px; color: #21452b; }
+.arcade-control-copy small { color: #53624d; font-size: 12px; line-height: 1.35; }
+.arcade-key-button { min-width: 110px; min-height: 44px; padding: 8px 12px; border: 2px solid #526b49; border-radius: 7px; background: #fff8df; box-shadow: 0 3px 0 #52654b; color: #214d2b; font: 700 15px Arial, Helvetica, sans-serif; cursor: pointer; }
+.arcade-key-button:hover { background: #fffef0; }
+.arcade-key-button:focus-visible { outline: 3px solid #17487f; outline-offset: 3px; }
+.arcade-key-button:active { transform: translateY(2px); box-shadow: 0 1px 0 #52654b; }
+.arcade-key-button--active { border-color: #9b641f; background: #fff0a4; color: #713f19; }
+.arcade-controls-message { min-height: 22px; margin: 12px 0 17px; color: #405941; font-size: 13px; font-weight: 700; text-align: center; }
+.arcade-controls-actions { display: grid; gap: 12px; justify-items: center; }
+.arcade-controls-actions .arcade-button { width: 100%; min-height: 52px; margin: 0; font-size: 19px; }
+.arcade-controls-actions .arcade-back { margin-top: 0; }
+.arcade-controls-help { margin: 20px 0 0; color: #53624d; font-size: 12px; line-height: 1.5; text-align: center; }
+@media (max-width: 430px) {
+  .arcade-control-row { grid-template-columns: 1fr; gap: 10px; }
+  .arcade-key-button { width: 100%; }
+}
