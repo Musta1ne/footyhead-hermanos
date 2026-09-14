@@ -45,57 +45,60 @@ Cada paso corresponde a 1/60 s. La pelota aplica ahora damping suave y
 determinista para que sea mas legible; los jugadores conservan su gravedad
 distinta, aceleracion y frenado progresivo.
 
-## Ajuste de sensacion del balon
+## Ajuste de sensacion de la pelota
 
 La referencia original usa restitucion 0,6, pero la geometria de 1024 px y la
-salida fija de este runtime hacian que el balon se sintiera demasiado rapido y
-reboton. Se ajustaron solo reglas compartidas por el anfitrion y la prediccion;
+salida fija de este runtime hacian que la pelota se sintiera demasiado rapida y
+rebotona. Se ajustaron solo reglas compartidas por el anfitrion y la prediccion;
 el formato de snapshots no cambia.
+
+La salida de patada se habia reducido a (+/-6, -4) px/paso. Esta calibracion la
+eleva suavemente a (+/-6,8, -4,4), todavia por debajo de la referencia original.
 
 | Regla | Antes | Despues | Efecto observable |
 | --- | ---: | ---: | --- |
 | Saque X | 3 px/paso | 2,5 px/paso | Menor velocidad inicial horizontal |
 | Saque Y | -2,1 px/paso | -1,8 px/paso | Saque menos vertical |
-| Salida X de patada | 8 px/paso | 6 px/paso | Patada inmediata, con menor alcance |
-| Salida Y de patada | -5 px/paso | -4 px/paso | Arco de patada mas bajo |
+| Salida X de patada | 8 px/paso | 6,8 px/paso | Patada contenida, 13% mas rapida que 6 px/paso |
+| Salida Y de patada | -5 px/paso | -4,4 px/paso | Arco moderadamente mas alto que -4 px/paso |
 | Limite de velocidad | 14 px/paso | 10,5 px/paso | Tope contra tiros incontrolables |
 | Restitucion del suelo | 0,6 | 0,48 | Primer rebote conserva aproximadamente 48% |
 | Restitucion de cabeza | 0,65 | 0,4 | Contactos devuelven menos energia |
 | Restitucion de bota | 0,6 | 0,45 | Pie levantado bloquea sin catapultar |
 | Restitucion de paredes/postes | 1 | 0,45 | Dejan de ser trampolines |
-| Damping del balon | ninguno | 0,998 por paso | Vuelo y rodadura conservan mejor el impulso horizontal |
+| Damping de la pelota | ninguno | 0,998 por paso | Vuelo y rodadura conservan mejor el impulso horizontal |
 
 El damping se aplica en cada subpaso como `0,998^(1/3)`, equivalente a 0,998
 por tick de 60 Hz. No se aplica friccion tangencial artificial en contactos:
 la pelota sigue pudiendo rodar y las patadas siguen respondiendo al primer
 paso.
 
-## Contactos del balon y proporciones del pie
+## Contactos de la pelota y proporciones del pie
 
 - Bota de 16x18 unidades, orbita de 23 y angulo de reposo de 1,05 rad: queda
   recogida delante y debajo de la cabeza. Dibujo y colision comparten el
   centro calculado por `bootPose`.
-- Balon de masa 1, sin friccion de aire del motor Matter. Se integra
+- Pelota de masa 1, sin friccion de aire del motor Matter. Se integra
   explicitamente fuera del mundo Matter, a 60 Hz con tres subpasos, y aplica
   el damping calibrado arriba.
-- Cabeza circular de radio 22, con masa infinita frente al balon: se separa
-  solo el balon y se aplica el impulso normal relativo con restitucion 0,4.
+- Cabeza circular de radio 22, con masa infinita frente a la pelota: se separa
+  solo la pelota y se aplica el impulso normal relativo con restitucion 0,4.
   Los centros coincidentes tienen una normal de salida segura.
-- Bota contra balon: circulo/AABB de 16x18, con resolucion de caras, esquinas
+- Bota contra pelota: circulo/AABB de 16x18, con resolucion de caras, esquinas
   y centros interiores. El dibujo rota, la caja permanece alineada a ejes.
 - Durante los tres primeros ticks de una pulsacion, el contacto da una salida
-  de (+/-6, -4) px/paso. La bota sube en tres ticks. Mantener Espacio la deja
+  de (+/-6,8, -4,4) px/paso. La bota sube en tres ticks. Mantener Espacio la deja
   levantada, pero no reinicia el impulso. Una nueva pulsacion permite otro tiro.
 - Fuera de esa ventana, el pie rebota con restitucion 0,45 segun la normal de
   contacto. Sobre una cara horizontal invierte vy; sobre una cara lateral
-  invierte vx, evitando que el balon atraviese el costado de la bota.
+  invierte vx, evitando que la pelota atraviese el costado de la bota.
 - Suelo en y=590, restitucion 0,48; paredes, techo y travesanos con
   restitucion 0,45. Los travesanos conservan sus cajas inclinadas +/-0,05 rad.
-  Solo se rebota si el balon se acerca; siempre se corrige la penetracion.
+  Solo se rebota si la pelota se acerca; siempre se corrige la penetracion.
   Los rebotes minimos se estabilizan en el piso sin consumir velocidad
   horizontal de forma artificial.
 - Limite de velocidad de 10,5 px/paso: el maximo desplazamiento por subpaso es
-  3,5 unidades, inferior al radio del balon.
+  3,5 unidades, inferior al radio de la pelota.
 
 ## Jugadores y red
 
@@ -104,7 +107,7 @@ rivales. Se conservan carrera, inercia y salto. Las botas levantadas bloquean
 al rival; recogidas no empujan la cabeza que sirve de apoyo al caer encima de
 otro jugador.
 
-La fisica del balon es explicita, pero esto no convierte todo el juego en un
+La fisica de la pelota es explicita, pero esto no convierte todo el juego en un
 lockstep determinista entre maquinas. Se conserva el anfitrion autoritativo,
 la prediccion y la restauracion de snapshots. El formato de estado no cambia:
 `feet`, `kicks` y los inputs restauran tambien la ventana activa de patada.

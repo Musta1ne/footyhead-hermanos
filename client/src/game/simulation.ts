@@ -15,7 +15,7 @@ export const RULES = {
   bootRadius: 8, bootOrbit: 23, bootRestAngle: 1.05,
   bootRaiseTicks: 3, bootLowerTicks: 8, bootTapTicks: 6, bootMotionTransfer: 0.55,
   bootWidth: 16, bootHeight: 18, goalPauseTicks: 45,
-  headRestitution: 0.4, bootRestitution: 0.45, kickX: 6, kickY: 4,
+  headRestitution: 0.4, bootRestitution: 0.45, kickX: 6.8, kickY: 4.4,
   inputTimeoutMs: 750, snapshotEveryTicks: 2,
   matchTicks: 60 * 60,
 };
@@ -60,7 +60,7 @@ export class Simulation {
   players = [200, 824].map(x => Bodies.circle(x, 550, RULES.playerRadius, { mass: 20, restitution: 0, friction: 0, frictionAir: 0, inertia: Infinity,
     collisionFilter: { category: COLLISION.head, group: Body.nextGroup(true) } }));
   // Sin torque físico: la rotación visual no modifica la normal de rebote.
-  // El círculo mantiene su orientación; el balón puede rodar sin frenarse.
+  // El círculo mantiene su orientación; la pelota puede rodar sin frenarse.
   // Contenedor de estado compatible con snapshots; no se integra en Matter.
   ball = Bodies.circle(512, RULES.serveY, RULES.ballRadius, { mass: 1, frictionAir: 0, inertia: Infinity,
     collisionFilter: { category: COLLISION.ball, mask: 0 } });

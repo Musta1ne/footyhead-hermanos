@@ -16,7 +16,7 @@ test("la pelota tiene una salida contenida y pierde velocidad entre contactos", 
     const launchSpeed = 10;
     Matter.Body.setVelocity(sim.ball, { x: launchSpeed, y: 0 });
     for (let i = 0; i < 60; i++) sim.step(emptyInput(), emptyInput());
-    assert.ok(sim.ball.velocity.x < launchSpeed * 0.9, "el balón debe amortiguarse en vuelo");
+    assert.ok(sim.ball.velocity.x < launchSpeed * 0.9, "la pelota debe amortiguarse en vuelo");
 
     Matter.Body.setPosition(sim.ball, { x: 512, y: 300 });
     Matter.Body.setVelocity(sim.ball, { x: 0, y: 0 });
@@ -97,7 +97,7 @@ test("centros coincidentes se separan sin NaN y no impulsan si ya se alejan", ()
   }
 });
 
-test("el balón rápido no atraviesa cabeza, bota ni travesaño", () => {
+test("la pelota rápida no atraviesa cabeza, bota ni travesaño", () => {
   for (const target of ["head", "boot", "bar"]) {
     const sim = new Simulation();
     try {
@@ -414,6 +414,8 @@ test("el pie describe una órbita, queda arriba y vuelve al reposo al soltar", (
 
 test("la patada activa tiene salida fija y simétrica en ambos lados", () => {
   const results: number[] = [];
+  assert.equal(RULES.kickX, 6.8);
+  assert.equal(RULES.kickY, 4.4);
   for (const team of [1, 2] as const) {
     for (const ballY of [575, 563]) {
       const sim = new Simulation();
@@ -424,9 +426,10 @@ test("la patada activa tiene salida fija y simétrica en ambos lados", () => {
         Matter.Body.setVelocity(sim.ball, { x: 0, y: 0 });
         const hold = { ...emptyInput(), kick: 1, kickHeld: true };
         for (let i = 0; i < 10; i++) sim.step(team === 1 ? hold : emptyInput(), team === 2 ? hold : emptyInput());
-        assert.ok(sim.ball.velocity.x * side > 2);
+        assert.ok(sim.ball.velocity.x * side > 6);
         const kickSpeed = Math.hypot(sim.ball.velocity.x, sim.ball.velocity.y);
-        assert.ok(kickSpeed > 5.5 && kickSpeed < 7, `salida de patada ${kickSpeed}`);
+        assert.ok(kickSpeed > 7 && kickSpeed < 8.2, `salida de patada ${kickSpeed}`);
+        assert.ok(sim.ball.velocity.y < -3, `altura de patada ${sim.ball.velocity.y}`);
         results.push(sim.ball.velocity.y);
       } finally { sim.destroy(); }
     }
