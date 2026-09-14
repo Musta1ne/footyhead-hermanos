@@ -32,78 +32,56 @@ Cada paso corresponde a 1/60 s. La pelota no tiene resistencia de aire:
 mantiene la velocidad horizontal en vuelo. Los jugadores tienen una gravedad
 distinta, aceleran hasta su velocidad máxima y frenan progresivamente al soltar.
 
-## Pelota y pie: segunda referencia
+## Contactos del balón y proporciones del pie
 
-El segundo video conserva los 1120 px de ancho; el piso está en y=865 y el
-centro de la pelota apoyada en y≈852. Entre 3,6 y 8 s se distinguen un ápice
-inicial cercano a y=520 y dos rebotes con ápices cercanos a 728 y 808.
-Las raíces de las proporciones de altura dan restituciones de aproximadamente
-0,61 y 0,60. La simulación usa **0,6** y comprueba la velocidad de salida real.
+La referencia más reciente son las dos capturas aportadas por el usuario y
+su descripción de colisiones círculo/círculo y círculo/AABB. Los valores son
+una aproximación calibrable, no constantes verificadas del juego original.
 
-Entre 34 y 39,5 s la pelota rueda sin contactos a unos −19,89 px/s de video,
-equivalentes a −0,303 px/paso. Se elimina el frenado por fricción del balón.
-También se separa su giro visual (`ballRotation`) de la orientación del cuerpo
-de colisión: el torque del polígono de Matter ya no consume parte del rebote.
-La gravedad sigue siendo 0,1 px/paso² y la masa sigue siendo 3.
+- Bota de 16×18 unidades (antes 24×26), órbita de 23 (antes 35) y ángulo
+  de reposo de 1,05 rad: queda recogida delante y debajo de la cabeza.
+  Dibujo y colisión comparten el centro calculado por `bootPose`.
+- Balón de masa 1, sin fricción de aire ni frenado horizontal al rodar.
+  Se integra explícitamente fuera del mundo Matter, a 60 Hz con tres subpasos.
+- Cabeza circular de radio 22, con masa infinita frente al balón: se separa
+  sólo el balón y se aplica el impulso normal relativo con restitución 0,65.
+  Los centros coincidentes tienen una normal de salida segura.
+- Bota contra balón: círculo/AABB de 16×18, con resolución de caras, esquinas
+  y centros interiores. El dibujo rota, la caja permanece alineada a los ejes.
+- Durante los tres primeros ticks de una pulsación, el contacto da una salida
+  de (±8, −5) px/paso. La bota sube en tres ticks. Mantener Espacio la deja
+  levantada, pero no reinicia el impulso. Una nueva pulsación permite otro tiro.
+- Fuera de esa ventana, el pie rebota con restitución 0,6 según la normal de
+  contacto. Sobre una cara horizontal esto invierte vy; sobre una cara lateral
+  invierte vx, evitando que el balón atraviese el costado de la bota.
+- Suelo en y=590, restitución 0,6; paredes, techo y travesaños con restitución 1.
+  Los travesaños conservan sus cajas inclinadas ±0,05 rad. Sólo se rebota si el
+  balón se acerca; siempre se corrige la penetración. Los rebotes mínimos se
+  estabilizan en el piso sin consumir velocidad horizontal.
+- Límite de velocidad de 14 px/paso: el máximo desplazamiento por subpaso es
+  aproximadamente 4,67 unidades, inferior al radio del balón.
 
-Entre 32 y 39 s se observa el pie derecho quieto arriba mientras se mantiene P,
-y su retorno al soltar. El centro levantado está aproximadamente 35 unidades
-delante de la cabeza; en reposo está detrás y debajo. Se usa una órbita de
-radio 35, desde 2,02 rad hasta 0, con ascenso y descenso de 8 pasos cada uno.
-La bota pasa de 18×19 a 24×26 unidades y su colisión es un círculo de radio 11.
+## Jugadores y red
 
-El pie es un cuerpo cinemático unido a la cabeza. Colisiona continuamente con
-la pelota, la cabeza y el pie rival, incluso cuando está quieto. El contacto
-entre las dos botas separa a sus dueños porque Matter no resuelve pares de
-cuerpos estáticos. Su grupo excluye a su
-propia cabeza y su máscara excluye el suelo, para no cambiar la altura de apoyo
-ni el salto que el usuario aprobó. La velocidad de la cabeza más el 55 % del
-barrido alimentan el contacto. El motor resuelve la dirección según la normal,
-la velocidad relativa y las masas; no se fija una salida (vx, vy) al pulsar.
+Matter sigue resolviendo el movimiento de los jugadores, sus apoyos y los
+contactos entre rivales. Se conservan la carrera, la inercia y el salto medidos
+arriba. Las botas levantadas bloquean al rival; recogidas no empujan la cabeza
+que sirve de apoyo al caer encima de otro jugador.
 
-## Aspectos aproximados que conviene afinar jugando
-
-El tramo 7,45–7,90 s muestra una salida de pelota de aproximadamente
-−5,4 px/paso en horizontal y −3,6 en vertical, próxima al pie derecho. Como el
-contacto ocurre junto al piso y la cabeza, no permite aislar exactamente la
-contribución de cada uno. Sirve de referencia para una patada baja; no de
-medición concluyente de la restitución del suelo.
-
-El factor de transferencia del barrido, los 8 pasos de subida/bajada, la
-aproximación circular de la bota y el límite de velocidad son decisiones de
-calibración. No se dispone de las constantes del programa original.
-
-Los saltos elegidos ocurren antes de la primera recogida visible de un powerup.
-Se excluyeron de los ajustes los tramos posteriores con cambios de tamaño,
-efectos o contactos entre cuerpos que alteran la trayectoria. El video tampoco
-determina con precisión el comportamiento de todas las esquinas o patadas.
-
-## Contactos y controles
-
-- Mantener Espacio mantiene el pie arriba; soltarlo lo baja. La posición
-  compartida por dibujo y simulación es `bootPose(team, lift)`. Una pelota que
-  vuelve puede volver a chocar con el pie sin una nueva pulsación. No hay
-  temporizador que repita golpes ni un impulso extra al sostener la tecla.
-- Mantener Arriba vuelve a saltar al aterrizar. Las pulsaciones breves siguen
-  viajando como contadores para sobrevivir a un paquete perdido. Si un toque
-  entero ocurrió entre fotogramas, `tapTicks` conserva un barrido breve.
-- El salto requiere apoyo real bajo el personaje: piso, travesaño o rival.
-  No se habilita un segundo salto en el aire.
-- La simulación usa dos subpasos por paso de red y limita la pelota a
-  14 px/paso para evitar cruces de superficies finas en impactos rápidos.
-- `feet` guarda la elevación y los ticks del toque breve para restaurar el
-  movimiento a mitad del barrido. `ballRotation` sincroniza el giro visual.
-  Los controles sostenidos se liberan al perder el foco y por timeout remoto.
+La física del balón es explícita, pero esto no convierte todo el juego en un
+lockstep determinista entre máquinas. Se conserva el anfitrión autoritativo,
+la predicción y la restauración de snapshots. El formato de estado no cambia:
+`feet`, `kicks` y los inputs restauran también la ventana activa de patada.
+Ambos jugadores deben recargar la versión nueva antes de jugar juntos.
 
 ## Comprobación
 
-`tests/simulation.test.ts` comprueba los márgenes del salto y la inercia,
-las dos gravedades, rebotes que pierden altura, travesaños, apoyo sobre el rival,
-órbita y retorno del pie, bloqueo del rival, rebote contra el pie sostenido,
-rodadura, simetría de ambos lados y restauración durante el barrido.
-También conserva las comprobaciones de goles, revancha y colisiones tras
-restaurar estados. Los tres casos nuevos de pie sostenido, bloqueo del rival
-y rodadura fallaban en la versión anterior y pasan con esta implementación.
+`tests/simulation.test.ts` cubre salto, inercia, apoyos, goles, revancha,
+restauración, alcance compacto, patadas simétricas, rodadura y pérdida de
+altura. También verifica círculo/AABB con centro interior, separación sin
+NaN, restitución de cabeza sin empujar al jugador y contactos a velocidad
+máxima contra cabeza, bota y travesaño.
 
-Después de publicar esta versión ambos jugadores deben recargar y crear una
-sala nueva: el formato de entrada y de estado incluye campos nuevos.
+Ejecutar `npm test` y `npm run build` antes de publicar. La equivalencia de
+sensaciones con el original requiere comparación jugando; las capturas no
+permiten medir tiempos ni fuerzas exactas.
