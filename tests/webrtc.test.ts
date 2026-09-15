@@ -69,6 +69,24 @@ test("dos Peer reales abren ambos canales y juegan aunque se apague la señaliza
     assert.deepEqual(await pause, { type: "visibility", hidden: true });
     const hostSim = new Simulation(), guestSim = new Simulation();
     try {
+      // The complete state must carry a moving, rotated boot as well as the
+      // players and ball; this is the network contract used by the guest's
+      // prediction restore path.
+      hostSim.step({ ...emptyInput(), kick: 1, kickHeld: true }, emptyInput());
+      const dynamic = hostSim.snapshot();
+      const bootState = new Promise<void>(resolve => {
+        guest.onMessage = message => { guestSim.restore(message.state as Snapshot); resolve(); };
+      });
+      host.send({ type: "state", state: dynamic }, true);
+      await bootState;
+      const restored = guestSim.snapshot();
+      assert.deepEqual({ ...restored, boots: undefined }, { ...dynamic, boots: undefined });
+      dynamic.boots.forEach((expected, i) => {
+        const actual = restored.boots[i];
+        for (const key of ["x", "y", "vx", "vy", "angle", "spin"] as const) {
+          assert.ok(Math.abs(actual[key] - expected[key]) < 1e-9, `boot ${i} ${key} was not restored`);
+        }
+      });
       for (let match = 0; match < 2; match++) {
         hostSim.remainingTicks = 1;
         hostSim.score = [match + 1, 0];

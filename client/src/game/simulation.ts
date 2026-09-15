@@ -15,13 +15,14 @@ export const RULES = {
   maxRollSpeed: 3, rollLimitDelayMs: 200, rollVerticalTolerance: 0.05, rollHorizontalTolerance: 0.01,
   maxBallSpeed: 10.5, serveY: 295, serveXSpeed: 2.5, serveYSpeed: -1.8,
   bootRadius: 8 * VISUAL_SCALE, bootOrbit: 27 * VISUAL_SCALE, bootRestAngle: 1.05,
-  bootRaiseTicks: 8, bootLowerTicks: 8, bootTapTicks: 6, bootMotionTransfer: 0.55,
+  bootMass: 2.4, bootRaiseTicks: 8, bootLowerTicks: 8, bootTapTicks: 6,
+  bootSpring: 0.34, bootSpringDamping: 0.16,
   bootWidth: 16 * VISUAL_SCALE, bootHeight: 18 * VISUAL_SCALE,
   goalWidth: REFERENCE_VISUALS.goal.width * VISUAL_SCALE,
   goalTop: PITCH_FLOOR_Y - REFERENCE_VISUALS.goal.height * VISUAL_SCALE,
   goalScoreX: 65 * VISUAL_SCALE, goalScoreY: PITCH_FLOOR_Y - (590 - 480) * VISUAL_SCALE,
   goalPauseTicks: 45,
-  headRestitution: 0.4, bootRestitution: 0.45, kickX: 6, kickY: 5.6,
+  headRestitution: 0.4, bootRestitution: 0.45,
   inputTimeoutMs: 750, snapshotEveryTicks: 2,
   matchTicks: 60 * 60,
 };
@@ -34,9 +35,10 @@ export type Snapshot = {
   tick: number; round: number; pause: number; score: [number, number];
   match: number; remainingTicks: number; ready: [boolean, boolean];
   players: [BodyState, BodyState]; ball: BodyState;
-  inputs: [Input, Input]; kicks: [number, number]; feet: [FootState, FootState]; ballRotation: number; ballRollMs: number;
+  inputs: [Input, Input]; kicks: [number, number]; feet: [FootState, FootState];
+  boots: [BodyState, BodyState]; ballRotation: number; ballRollMs: number;
 };
-const { Engine, Bodies, Body, Composite, Query } = Matter;
+const { Engine, Bodies, Body, Composite, Constraint, Query } = Matter;
 
 // lift=0: reposo; lift=1: pie levantado. La órbita no atraviesa la cabeza.
 // Dibujo y cuerpo sólido usan exactamente la misma posición.
@@ -45,7 +47,7 @@ export function bootPose(team: Team, lift: number) {
   // a la altura de su centro; ambos lados usan exactamente el mismo espejo.
   const orbitAngle = RULES.bootRestAngle + (Math.PI - RULES.bootRestAngle) * lift;
   const side = team === 1 ? 1 : -1;
-  return { x: -side * Math.cos(orbitAngle) * RULES.bootOrbit, y: Math.sin(orbitAngle) * RULES.bootOrbit, angle: side * (-1.3 + lift * 1.8) };
+  return { x: -side * Math.cos(orbitAngle) * RULES.bootOrbit, y: Math.sin(orbitAngle) * RULES.bootOrbit, angle: side * (-1.3 - (Math.PI - RULES.bootRestAngle) * lift) };
 }
 
 const COLLISION = { world: 1, head: 2, ball: 4, foot: 8 };
@@ -64,7 +66,10 @@ export function circleBox(x: number, y: number, radius: number, halfWidth: numbe
 }
 
 export class Simulation {
-  engine = Engine.create({ gravity: { x: 0, y: 1, scale: RULES.ballGravity / RULES.stepMs ** 2 } });
+  engine = Engine.create({
+    gravity: { x: 0, y: 1, scale: RULES.ballGravity / RULES.stepMs ** 2 },
+    positionIterations: 10, velocityIterations: 6, constraintIterations: 2,
+  });
   players = [200, 824].map(x => Bodies.circle(x, 550, RULES.playerRadius, { mass: 20, restitution: 0, friction: 0, frictionAir: 0, inertia: Infinity,
     collisionFilter: { category: COLLISION.head, group: Body.nextGroup(true) } }));
   // Sin torque físico: la rotación visual no modifica la normal de rebote.
@@ -73,10 +78,33 @@ export class Simulation {
   ball = Bodies.circle(512, RULES.serveY, RULES.ballRadius, { mass: 1, frictionAir: 0, inertia: Infinity,
     collisionFilter: { category: COLLISION.ball, mask: 0 } });
   feet: [FootState, FootState] = [{ lift: 0, tapTicks: 0 }, { lift: 0, tapTicks: 0 }];
-  boots = this.players.map(player => Bodies.circle(player.position.x, player.position.y, RULES.bootRadius, {
-    isStatic: true, restitution: 0.15, friction: 0, frictionStatic: 0,
-    collisionFilter: { category: COLLISION.foot, mask: COLLISION.head | COLLISION.ball, group: player.collisionFilter.group },
-  }));
+  boots = this.players.map((player, i) => {
+    const pose = bootPose(i === 0 ? 1 : 2, 0);
+    const boot = Bodies.rectangle(player.position.x + pose.x, player.position.y + pose.y,
+      RULES.bootWidth, RULES.bootHeight, {
+        angle: pose.angle, mass: RULES.bootMass, restitution: RULES.bootRestitution,
+        friction: 0, frictionStatic: 0, frictionAir: 0,
+        // Lift is a pose target, not a collision switch. Keep all physical
+        // contacts enabled while a boot sweeps up or down.
+        collisionFilter: { category: COLLISION.foot, mask: COLLISION.head | COLLISION.foot | COLLISION.ball, group: player.collisionFilter.group },
+      });
+    // The boot rotates around its pin, so use the parallel-axis inertia of
+    // the rigid body about that pivot rather than only Icom. This keeps the
+    // finite-mass pin stable while preserving physical angular yielding.
+    Body.setInertia(boot, boot.inertia + boot.mass * RULES.bootOrbit ** 2);
+    return boot;
+  });
+  bootPivots = this.boots.map((boot, i) => {
+    const pose = bootPose(i === 0 ? 1 : 2, 0);
+    const pivot = { x: -pose.x, y: -pose.y };
+    return Constraint.create({
+      bodyA: this.players[i], bodyB: boot, pointA: { x: 0, y: 0 },
+      // Matter stores constraint anchors in world-relative coordinates and
+      // rotates them as the body angle changes; do not pre-rotate this pivot.
+      pointB: pivot,
+      length: 0, stiffness: 1, damping: 0.01,
+    });
+  });
   ballRotation = 0;
   ballRollMs = 0;
   tick = 0;
@@ -112,7 +140,7 @@ export class Simulation {
 
   constructor() {
     Composite.add(this.engine.world, [
-      ...this.players, ...this.boots,
+      ...this.players, ...this.boots, ...this.bootPivots,
       Bodies.rectangle(-10, 300, 20, 768, { isStatic: true, restitution: RULES.wallRestitution }),
       Bodies.rectangle(1034, 300, 20, 768, { isStatic: true, restitution: RULES.wallRestitution }),
       Bodies.rectangle(512, -10, 1024, 20, { isStatic: true, restitution: RULES.wallRestitution }),
@@ -129,6 +157,13 @@ export class Simulation {
       Body.setVelocity(p, { x: 0, y: 0 });
       Body.setAngularVelocity(p, 0);
     });
+    this.boots.forEach((boot, i) => {
+      const pose = bootPose(i === 0 ? 1 : 2, 0), player = this.players[i];
+      Body.setPosition(boot, { x: player.position.x + pose.x, y: player.position.y + pose.y });
+      Body.setAngle(boot, pose.angle);
+      Body.setVelocity(boot, { x: 0, y: 0 });
+      Body.setAngularVelocity(boot, 0);
+    });
     Body.setPosition(this.ball, { x: 512, y: RULES.serveY });
     Body.setVelocity(this.ball, { x: this.round % 2 ? -RULES.serveXSpeed : RULES.serveXSpeed, y: RULES.serveYSpeed });
     Body.setAngularVelocity(this.ball, 0);
@@ -136,7 +171,7 @@ export class Simulation {
     this.feet = [{ lift: 0, tapTicks: 0 }, { lift: 0, tapTicks: 0 }];
     this.ballRotation = 0;
     this.ballRollMs = 0;
-    this.syncBoots();
+    this.rebuildBootPivots();
     // No reutilizar contactos de la posición anterior después de un gol.
     this.resetCollisions();
   }
@@ -145,6 +180,7 @@ export class Simulation {
     if (this.finished) return;
     this.tick++;
     this.remainingTicks--;
+    this.clearConstraintWarmth();
     const next = [one, two];
     if (this.pause > 0) {
       this.inputs = [{ ...one }, { ...two }];
@@ -160,6 +196,12 @@ export class Simulation {
       Body.setVelocity(player, { x: vx, y: player.velocity.y });
       if ((input.jump > this.inputs[i].jump || input.jumpHeld) && this.supported(player)) {
         Body.setVelocity(player, { x: player.velocity.x, y: RULES.jump });
+        // Launch the attached finite-mass boot with the same delta-V. The
+        // pin then keeps the pair together without stealing the jump impulse.
+        Body.setVelocity(this.boots[i], {
+          x: this.boots[i].velocity.x,
+          y: this.boots[i].velocity.y + RULES.jump,
+        });
       }
       if (input.kick > this.inputs[i].kick || (input.kickHeld && !this.inputs[i].kickHeld)) {
         this.kicks[i] = this.tick;
@@ -178,8 +220,6 @@ export class Simulation {
       Engine.update(this.engine, RULES.stepMs / RULES.substeps);
       this.limitBallSpeed();
       this.ballRotation = (this.ballRotation + this.ball.velocity.x / RULES.ballRadius / RULES.substeps) % (Math.PI * 2);
-      this.syncBoots();
-      this.resolveBootPair();
       this.stepBall();
     }
     this.feet.forEach(foot => { foot.tapTicks = Math.max(0, foot.tapTicks - 1); });
@@ -200,66 +240,38 @@ export class Simulation {
   }
 
   private moveBoot(i: number, raised: boolean) {
-    const team = i === 0 ? 1 : 2, foot = this.feet[i], player = this.players[i];
-    const previous = bootPose(team, foot.lift);
+    const team = i === 0 ? 1 : 2, foot = this.feet[i], boot = this.boots[i];
     const rate = 1 / ((raised ? RULES.bootRaiseTicks : RULES.bootLowerTicks) * RULES.substeps);
-    const nextLift = Math.max(0, Math.min(1, foot.lift + (raised ? rate : -rate)));
-    let pose = bootPose(team, nextLift);
-    if (!raised && nextLift < foot.lift) {
-      const hit = circleBox(
-        this.ball.position.x - player.position.x - pose.x,
-        this.ball.position.y - player.position.y - pose.y,
-        RULES.ballRadius,
-        RULES.bootWidth / 2,
-        RULES.bootHeight / 2,
-      );
-      if (hit) pose = previous;
-      else foot.lift = nextLift;
-    } else {
-      foot.lift = nextLift;
-    }
-    const boot = this.boots[i];
-    // En reposo queda recogida contra el cuerpo: no debe empujar el apoyo
-    // bajo la cabeza al aterrizar sobre otro jugador.
-    boot.collisionFilter.mask = foot.lift > 0.5 ? COLLISION.head : 0;
-    Body.setPosition(boot, { x: player.position.x + pose.x, y: player.position.y + pose.y });
-    // Cuerpo cinemático: transmite la velocidad de la cabeza y del barrido.
-    // Quedarse levantado no inyecta impulsos ni dispara una patada nueva.
-    // Matter no integra los cuerpos estáticos: su positionPrev debe expresar
-    // el desplazamiento de este subpaso, no el de un paso completo.
-    Body.setVelocity(boot, {
-      x: player.velocity.x / RULES.substeps + (pose.x - previous.x) * RULES.bootMotionTransfer,
-      y: player.velocity.y / RULES.substeps + (pose.y - previous.y) * RULES.bootMotionTransfer,
-    });
+    foot.lift = Math.max(0, Math.min(1, foot.lift + (raised ? rate : -rate)));
+    const target = bootPose(team, foot.lift).angle;
+    const error = Number.isFinite(boot.angle)
+      ? Math.atan2(Math.sin(target - boot.angle), Math.cos(target - boot.angle))
+      : 0;
+    const angularAcceleration = RULES.bootSpring * error - RULES.bootSpringDamping * boot.angularVelocity;
+    boot.torque += boot.inertia * angularAcceleration / (RULES.stepMs * RULES.stepMs);
+    Body.applyForce(boot, boot.position, { x: 0, y: boot.mass * (RULES.playerGravity - RULES.ballGravity) / RULES.stepMs ** 2 });
   }
 
-  private syncBoots() {
+  private rebuildBootPivots() {
     this.boots.forEach((boot, i) => {
-      const pose = bootPose(i === 0 ? 1 : 2, this.feet[i].lift), player = this.players[i];
-      boot.collisionFilter.mask = this.feet[i].lift > 0.5 ? COLLISION.head : 0;
-      Body.setPosition(boot, { x: player.position.x + pose.x, y: player.position.y + pose.y });
+      const rest = bootPose(i === 0 ? 1 : 2, 0);
+      const delta = boot.angle - rest.angle;
+      const offset = { x: -rest.x, y: -rest.y };
+      const cos = Math.cos(delta), sin = Math.sin(delta);
+      const pivot = this.bootPivots[i] as Matter.Constraint & { angleA: number; angleB: number };
+      pivot.pointB = { x: offset.x * cos - offset.y * sin, y: offset.x * sin + offset.y * cos };
+      pivot.angleB = boot.angle;
+      pivot.angleA = this.players[i].angle;
     });
   }
 
-  private resolveBootPair() {
-    // Matter omite pares estático-estático. Las botas están ancladas a sus
-    // jugadores: su contacto separa a los dueños en lugar de superponer pies.
-    const dx = this.boots[1].position.x - this.boots[0].position.x;
-    const dy = this.boots[1].position.y - this.boots[0].position.y;
-    const distance = Math.hypot(dx, dy), overlap = RULES.bootRadius * 2 - distance;
-    if (overlap <= 0) return;
-    const nx = distance > 0.001 ? dx / distance : 1, ny = distance > 0.001 ? dy / distance : 0;
-    const [one, two] = this.players;
-    const inverseMass = one.inverseMass + two.inverseMass;
-    const shareOne = one.inverseMass / inverseMass, shareTwo = two.inverseMass / inverseMass;
-    Body.translate(one, { x: -nx * overlap * shareOne, y: -ny * overlap * shareOne });
-    Body.translate(two, { x: nx * overlap * shareTwo, y: ny * overlap * shareTwo });
-    const approaching = (two.velocity.x - one.velocity.x) * nx + (two.velocity.y - one.velocity.y) * ny;
-    if (approaching < 0) {
-      Body.setVelocity(one, { x: one.velocity.x + nx * approaching * shareOne, y: one.velocity.y + ny * approaching * shareOne });
-      Body.setVelocity(two, { x: two.velocity.x - nx * approaching * shareTwo, y: two.velocity.y - ny * approaching * shareTwo });
-    }
-    this.syncBoots();
+  private clearConstraintWarmth() {
+    [...this.players, ...this.boots].forEach(body => {
+      const warm = (body as Matter.Body & { constraintImpulse: { x: number; y: number; angle: number } }).constraintImpulse;
+      warm.x = 0;
+      warm.y = 0;
+      warm.angle = 0;
+    });
   }
 
   private limitBallSpeed() {
@@ -282,13 +294,28 @@ export class Simulation {
         vx += impulse * nx; vy += impulse * ny;
       }
     };
-    // Primero la bota: una patada baja debe poder alcanzar la pelota junto a la cabeza.
-    this.boots.forEach((boot, i) => {
-      const hit = circleBox(x - boot.position.x, y - boot.position.y, radius, RULES.bootWidth / 2, RULES.bootHeight / 2);
+    this.boots.forEach(boot => {
+      const cos = Math.cos(boot.angle), sin = Math.sin(boot.angle);
+      const dx = x - boot.position.x, dy = y - boot.position.y;
+      const hit = circleBox(dx * cos + dy * sin, -dx * sin + dy * cos, radius, RULES.bootWidth / 2, RULES.bootHeight / 2);
       if (!hit) return;
-      const active = this.tick - this.kicks[i] < RULES.bootRaiseTicks;
-      contact(hit.nx, hit.ny, hit.depth, RULES.bootRestitution);
-      if (active) { vx = (i === 0 ? 1 : -1) * RULES.kickX; vy = -RULES.kickY; }
+      const nx = hit.nx * cos - hit.ny * sin, ny = hit.nx * sin + hit.ny * cos;
+      x += nx * (hit.depth + 0.000001); y += ny * (hit.depth + 0.000001);
+      const point = { x: x - nx * radius, y: y - ny * radius };
+      const lever = { x: point.x - boot.position.x, y: point.y - boot.position.y };
+      const bootVx = boot.velocity.x - boot.angularVelocity * lever.y;
+      const bootVy = boot.velocity.y + boot.angularVelocity * lever.x;
+      const relative = (vx - bootVx) * nx + (vy - bootVy) * ny;
+      if (relative >= 0) return;
+      const leverNormal = lever.x * ny - lever.y * nx;
+      const denominator = 1 + boot.inverseMass + leverNormal * leverNormal * boot.inverseInertia;
+      const impulse = -(1 + RULES.bootRestitution) * relative / denominator;
+      vx += impulse * nx; vy += impulse * ny;
+      Body.setVelocity(boot, {
+        x: boot.velocity.x - impulse * nx * boot.inverseMass,
+        y: boot.velocity.y - impulse * ny * boot.inverseMass,
+      });
+      Body.setAngularVelocity(boot, boot.angularVelocity - leverNormal * impulse * boot.inverseInertia);
     });
     this.players.forEach((player, i) => {
       const dx = x - player.position.x, dy = y - player.position.y;
@@ -345,7 +372,8 @@ export class Simulation {
       match: this.match, remainingTicks: this.remainingTicks, ready: [...this.ready],
       players: [body(this.players[0]), body(this.players[1])], ball: body(this.ball),
       inputs: [{ ...this.inputs[0] }, { ...this.inputs[1] }], kicks: [...this.kicks],
-      feet: [{ ...this.feet[0] }, { ...this.feet[1] }], ballRotation: this.ballRotation, ballRollMs: this.ballRollMs };
+      feet: [{ ...this.feet[0] }, { ...this.feet[1] }], boots: [body(this.boots[0]), body(this.boots[1])],
+      ballRotation: this.ballRotation, ballRollMs: this.ballRollMs };
   }
 
   restore(state: Snapshot) {
@@ -362,13 +390,16 @@ export class Simulation {
     this.feet = [{ ...state.feet[0] }, { ...state.feet[1] }];
     this.ballRotation = state.ballRotation;
     this.ballRollMs = state.ballRollMs;
-    this.players.forEach((p, i) => body(p, state.players[i])); body(this.ball, state.ball);
-    this.syncBoots();
+    this.players.forEach((p, i) => body(p, state.players[i]));
+    this.boots.forEach((boot, i) => body(boot, state.boots[i]));
+    body(this.ball, state.ball);
+    this.rebuildBootPivots();
     this.resetCollisions();
   }
 
   private resetCollisions() {
     Engine.clear(this.engine);
+    this.clearConstraintWarmth();
     // Engine.clear también vacía el detector. Volver a registrar todos los
     // cuerpos, incluido el piso, aunque el mundo no haya sido modificado.
     Matter.Detector.setBodies(this.engine.detector, Composite.allBodies(this.engine.world));

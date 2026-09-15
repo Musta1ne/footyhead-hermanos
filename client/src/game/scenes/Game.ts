@@ -1,7 +1,7 @@
 import Phaser, { Scene } from "phaser";
 import { Peer } from "../peer";
 import { ARCADE_FONT, drawGoal, drawStadium } from "./stadium";
-import { Simulation, RULES, bootPose, emptyInput, isInput, type Input, type Snapshot } from "../simulation";
+import { Simulation, RULES, emptyInput, isInput, type Input, type Snapshot } from "../simulation";
 import { controlHint, controlKeyCode, getControlBindings, type ControlBindings } from "../control-bindings";
 import { VISUALS } from "../visual-proportions";
 
@@ -227,9 +227,12 @@ export class Game extends Scene {
       if (i === 2) sprite.setRotation(this.sim.ballRotation);
     });
     this.boots.forEach((boot, i) => {
-      const pose = bootPose(i === 0 ? 1 : 2, this.sim.feet[i].lift);
-      boot.setPosition(this.heads[i].x + pose.x, this.heads[i].y + pose.y);
-      boot.setRotation(pose.angle);
+      // Matter resuelve dinamicamente la posicion y el giro del pie. El sprite
+      // sigue ese cuerpo en vez de reconstruir una pose limitada desde `lift`;
+      // asi los contactos y el barrido se dibujan como los ve la simulacion.
+      const body = this.sim.boots[i];
+      boot.setPosition(body.position.x, body.position.y);
+      boot.setRotation(body.angle);
     });
   }
 }
@@ -241,6 +244,7 @@ function isSnapshot(value: unknown): value is Snapshot {
   const body = (b: unknown) => !!b && typeof b === "object" && ["x", "y", "vx", "vy", "angle", "spin"].every(k => Number.isFinite((b as Record<string, unknown>)[k]));
   const foot = (f: Snapshot["feet"][number]) => !!f && Number.isFinite(f.lift) && f.lift >= 0 && f.lift <= 1
     && Number.isSafeInteger(f.tapTicks) && f.tapTicks >= 0 && f.tapTicks <= RULES.bootTapTicks;
+  const boots = (v as Snapshot).boots;
   return Number.isSafeInteger(v.tick) && v.tick >= 0 && Number.isSafeInteger(v.round) && Number.isSafeInteger(v.pause)
     && Number.isSafeInteger(v.match) && v.match >= 0
     && Number.isSafeInteger(v.remainingTicks) && v.remainingTicks >= 0 && v.remainingTicks <= RULES.matchTicks
@@ -248,6 +252,7 @@ function isSnapshot(value: unknown): value is Snapshot {
     && numbers(v.score) && numbers(v.kicks) && Number.isFinite(v.ballRotation)
     && Number.isFinite(v.ballRollMs) && v.ballRollMs >= 0 && v.ballRollMs <= RULES.rollLimitDelayMs
     && Array.isArray(v.feet) && v.feet.length === 2 && v.feet.every(foot)
+    && Array.isArray(boots) && boots.length === 2 && boots.every(body)
     && Array.isArray(v.inputs) && v.inputs.length === 2 && v.inputs.every(isInput)
     && Array.isArray(v.players) && v.players.length === 2 && v.players.every(body) && body(v.ball);
 }

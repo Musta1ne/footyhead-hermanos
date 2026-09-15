@@ -43,31 +43,39 @@ extraidas del programa original.
 
 Cada paso corresponde a 1/60 s. La pelota aplica ahora damping suave y
 determinista para que sea mas legible; los jugadores conservan su gravedad
-distinta, aceleracion y frenado progresivo.
+distinta, aceleracion y frenado progresivo. Las botas son cuerpos dinamicos
+con masa finita y una restriccion elastica al jugador: pueden ceder, rotar y
+desplazarse al recibir contactos, en vez de ser cuerpos estaticos teletransportados.
 
-## Ajuste de sensacion de la pelota
+## Ajuste de sensacion de la pelota y la bota
 
 La referencia original usa restitucion 0,6, pero la geometria de 1024 px y la
 salida fija de este runtime hacian que la pelota se sintiera demasiado rapida y
 rebotona. Se ajustaron solo reglas compartidas por el anfitrion y la prediccion;
-el formato de snapshots no cambia.
+El estado de snapshots incluye ahora los cuerpos dinamicos de ambas botas.
 
-La salida de patada se habia reducido a (+/-6, -4) px/paso. Esta calibracion la
-eleva suavemente a (+/-6,8, -4,4), todavia por debajo de la referencia original.
+La bota ya no impone una velocidad fija a la pelota: su masa, giro, velocidad y
+punto de contacto determinan el impulso reciproco del solucionador de pelota.
 
-| Regla | Antes | Despues | Efecto observable |
-| --- | ---: | ---: | --- |
-| Saque X | 3 px/paso | 2,5 px/paso | Menor velocidad inicial horizontal |
-| Saque Y | -2,1 px/paso | -1,8 px/paso | Saque menos vertical |
-| Salida X de patada | 8 px/paso | 6,8 px/paso | Patada contenida, 13% mas rapida que 6 px/paso |
-| Salida Y de patada | -5 px/paso | -4,4 px/paso | Arco moderadamente mas alto que -4 px/paso |
-| Limite de velocidad | 14 px/paso | 10,5 px/paso | Tope contra tiros incontrolables |
-| Restitucion del suelo | 0,6 | 0,48 | Primer rebote conserva aproximadamente 48% |
-| Restitucion de cabeza | 0,65 | 0,4 | Contactos devuelven menos energia |
-| Restitucion de bota | 0,6 | 0,45 | Pie levantado bloquea sin catapultar |
-| Restitucion de paredes/postes | 1 | 0,45 | Dejan de ser trampolines |
-| Damping de la pelota | ninguno | 0,998 por paso | Vuelo y rodadura conservan mejor el impulso horizontal |
-| Tope tras rodar 200 ms | ninguno | 3 px/paso | El jugador, que corre a 3,75 px/paso, puede alcanzar una pelota rápida en el piso |
+| Regla | Valor elegido | Efecto observable |
+| --- | ---: | --- |
+| Saque X | 2,5 px/paso | Menor velocidad inicial horizontal |
+| Saque Y | -1,8 px/paso | Saque menos vertical |
+| Limite de velocidad | 10,5 px/paso | Tope contra tiros incontrolables |
+| Restitucion del suelo | 0,48 | Primer rebote conserva aproximadamente 48% |
+| Restitucion de cabeza | 0,4 | Contactos devuelven menos energia |
+| Restitucion de bota | 0,45 | La respuesta depende tambien de su masa y velocidad |
+| Restitucion de paredes/postes | 0,45 | Dejan de ser trampolines |
+| Damping de la pelota | 0,998 por paso | Vuelo y rodadura conservan mejor el impulso horizontal |
+| Tope tras rodar 200 ms | 3 px/paso | El jugador puede alcanzar una pelota rapida en el piso |
+
+La bota tiene masa 2,4, friccion de aire 0 y un pivote de longitud cero
+con resorte torsional 0,34 y amortiguacion angular 0,16. Su inercia efectiva
+es `Icom + masa * radioOrbita²`. La articulacion une el cuerpo al
+centro del jugador, mientras que el objetivo angular sigue la elevacion
+compartida de `feet`. La respuesta queda integrada por Matter en cada subpaso,
+incluidas las fuerzas y torques de los contactos; no se inyecta una velocidad
+horizontal o vertical fija al patear.
 
 El damping se aplica en cada subpaso como `0,998^(1/3)`, equivalente a 0,998
 por tick de 60 Hz. No se aplica friccion tangencial artificial en contactos:
@@ -86,9 +94,11 @@ se acelera. Despegar, rebotar o detenerse reinicia el contador.
   conservar sus proporciones respecto de la cancha. Las colisiones usan el
   mismo factor, de modo que las siluetas visibles y las superficies de contacto
   no se separan.
-- Bota de 20,48x23,04 unidades, orbita de 29,44 y angulo de reposo de 1,05 rad: queda
-  recogida delante y debajo de la cabeza. Dibujo y colision comparten el
-  centro calculado por `bootPose`.
+- Bota rectangular de 20,48x23,04 unidades, masa 2,4, orbita de 34,56 y
+  angulo inicial de reposo de 1,05 rad: queda recogida delante y debajo de la
+  cabeza. `bootPose` solo define la referencia de la articulacion; el cuerpo
+  puede separarse, rotar y corregirse por la dinamica. El dibujo usa la
+  posicion y el angulo reales del cuerpo `boots`.
 - Pelota de masa 1, sin friccion de aire del motor Matter. Se integra
   explicitamente fuera del mundo Matter, a 60 Hz con tres subpasos, y aplica
   el damping calibrado arriba.
@@ -96,17 +106,16 @@ se acelera. Despegar, rebotar o detenerse reinicia el contador.
   masa infinita frente a la pelota: se separa
   solo la pelota y se aplica el impulso normal relativo con restitucion 0,4.
   Los centros coincidentes tienen una normal de salida segura.
-- Bota contra pelota: circulo/AABB de 20,48x23,04, con resolucion de caras, esquinas
-  y centros interiores. El dibujo rota, la caja permanece alineada a ejes.
-- Durante los tres primeros ticks de una pulsacion, el contacto da una salida
-  de (+/-6,8, -4,4) px/paso. La bota sube en tres ticks. Mantener Espacio la deja
-  levantada, pero no reinicia el impulso. Una nueva pulsacion permite otro tiro.
-- Fuera de esa ventana, el pie rebota con restitucion 0,45 segun la normal de
-  contacto. Sobre una cara horizontal invierte vy; sobre una cara lateral
-  invierte vx, evitando que la pelota atraviese el costado de la bota.
-- Al bajar, la bota prueba primero su siguiente posicion. Si esa pose invade la
-  pelota, el descenso queda bloqueado hasta que el contacto se libera; asi no la
-  arrastra por debajo de la cabeza ni la expulsa detras del jugador.
+- Bota contra pelota: rectangulo dinamico de 20,48x23,04 con restitucion 0,45.
+  La restriccion de la bota al jugador conserva el barrido, y Matter resuelve
+  los impulsos reciprocos consideran normal, masas, inercia y velocidad relativa.
+- Las mascaras de contacto con pelota, cabeza rival y otra bota estan siempre
+  activas. Al pulsar, el resorte busca el objetivo levantado. Mantener Espacio la deja
+  levantada, pero no reinicia la patada; al soltar, la restriccion la devuelve
+  progresivamente. No se fija una salida artificial de la pelota.
+- La bota puede ceder o rotar ante pelota y rival; no colisiona con el escenario. El contacto
+  continuo se conserva incluso cuando queda quieta, por lo que la pelota puede
+  volver a tocarla sin una nueva pulsacion.
 - Suelo en y=590, restitucion 0,48; paredes, techo y travesanos con
   restitucion 0,45. Los travesanos conservan sus cajas inclinadas +/-0,05 rad.
   Solo se rebota si la pelota se acerca; siempre se corrige la penetracion.
@@ -121,15 +130,18 @@ se acelera. Despegar, rebotar o detenerse reinicia el contador.
 ## Jugadores y red
 
 Matter sigue resolviendo el movimiento de jugadores, apoyos y contactos entre
-rivales. Se conservan carrera, inercia y salto. Las botas levantadas bloquean
-al rival; recogidas no empujan la cabeza que sirve de apoyo al caer encima de
-otro jugador.
+rivales. Se conservan carrera, inercia y salto. Las botas mantienen contactos
+con el rival incluso recogidas. Tienen masa finita, amortiguacion torsional y
+un pivote fisico al jugador, asi que su estado de posicion, velocidad, angulo y giro es
+parte de la dinamica observable.
 
 La fisica de la pelota es explicita, pero esto no convierte todo el juego en un
 lockstep determinista entre maquinas. Se conserva el anfitrion autoritativo,
-la prediccion y la restauracion de snapshots. `feet`, `kicks`, los inputs y
-`ballRollMs` restauran tambien la ventana activa de patada y el tiempo continuo
-de rodamiento.
+la prediccion y la restauracion de snapshots. `boots` serializa el estado
+dinamico completo de cada pie (`x`, `y`, `vx`, `vy`, `angle`, `spin`); `feet`,
+`kicks`, los inputs y `ballRollMs` restauran tambien la ventana activa de
+patada y el tiempo continuo de rodamiento. El invitado dibuja esas posiciones y
+angulos confirmados/predichos, no una orbita reconstruida desde `lift`.
 Ambos jugadores deben recargar la version nueva antes de jugar juntos.
 
 ## Comprobacion

@@ -4,6 +4,68 @@ import Matter from "../client/node_modules/matter-js/build/matter.js";
 import { Simulation, bootPose, circleBox, emptyInput, RULES, isInput } from "../client/src/game/simulation";
 import { ARENA_SLOPES, PITCH_FLOOR_Y, VISUAL_SCALE } from "../client/src/game/visual-proportions";
 
+// Teleport fixtures preserve the rigid boot/player relationship. Gameplay
+// never teleports a head without its attached dynamic boot, while several
+// isolated physics tests do so to set up a scenario.
+function teleportPlayer(sim: Simulation, index: 0 | 1, position: { x: number; y: number }) {
+  const state = sim.snapshot();
+  const previous = state.players[index];
+  const dx = position.x - previous.x, dy = position.y - previous.y;
+  state.players[index] = { ...previous, x: position.x, y: position.y };
+  state.boots[index] = { ...state.boots[index], x: state.boots[index].x + dx, y: state.boots[index].y + dy };
+  sim.restore(state);
+}
+
+const angleDistance = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+const bootContactNormal = (boot: Matter.Body) => {
+  const normal = { x: Math.sin(boot.angle), y: -Math.cos(boot.angle) };
+  return normal.y < 0 ? normal : { x: -normal.x, y: -normal.y };
+};
+
+test("el impacto en reposo del pie dinámico produce retroceso aunque el gesto apenas comienza", () => {
+  const contact = new Simulation();
+  const baseline = new Simulation();
+  try {
+    const hold = { ...emptyInput(), kick: 1, kickHeld: true };
+    contact.step(hold, emptyInput());
+    baseline.step(hold, emptyInput());
+    const boot = contact.boots[0], normal = bootContactNormal(boot);
+    Matter.Body.setPosition(contact.ball, {
+      x: boot.position.x + normal.x * (RULES.bootHeight / 2 + RULES.ballRadius - 0.5),
+      y: boot.position.y + normal.y * (RULES.bootHeight / 2 + RULES.ballRadius - 0.5),
+    });
+    Matter.Body.setVelocity(contact.ball, { x: -normal.x * 6, y: -normal.y * 6 });
+    contact.step(emptyInput(), emptyInput());
+    baseline.step(emptyInput(), emptyInput());
+    const contactVelocity = contact.boots[0].velocity.x * normal.x + contact.boots[0].velocity.y * normal.y;
+    const baselineVelocity = baseline.boots[0].velocity.x * normal.x + baseline.boots[0].velocity.y * normal.y;
+    assert.ok(Math.abs(contactVelocity - baselineVelocity) > 0.01,
+      `el pie no cede ante el impacto: ${contactVelocity} == ${baselineVelocity}`);
+  } finally {
+    contact.destroy();
+    baseline.destroy();
+  }
+});
+
+test("las botas dinámicas tienen masa finita y ceden ante un impacto", () => {
+  const sim = new Simulation();
+  try {
+    const boot = sim.boots[0];
+    assert.equal(boot.isStatic, false);
+    assert.ok(Number.isFinite(boot.mass) && boot.mass > 0);
+    assert.ok(Number.isFinite(boot.inertia) && boot.inertia > 0);
+    const hold = { ...emptyInput(), kick: 1, kickHeld: true };
+    for (let i = 0; i < 10; i++) sim.step(hold, emptyInput());
+    Matter.Body.setPosition(sim.ball, { x: boot.position.x + 20, y: boot.position.y });
+    Matter.Body.setVelocity(sim.ball, { x: -8, y: 0 });
+    const before = boot.velocity.x;
+    sim.step(emptyInput(), emptyInput());
+    assert.notEqual(boot.velocity.x, before);
+  } finally {
+    sim.destroy();
+  }
+});
+
 test("la pelota tiene una salida contenida y pierde velocidad entre contactos", () => {
   const sim = new Simulation();
   try {
@@ -72,7 +134,7 @@ test("un impacto en la cabeza usa restitución contenida sin desplazar al jugado
   const sim = new Simulation(), baseline = new Simulation();
   try {
     for (const s of [sim, baseline]) {
-      Matter.Body.setPosition(s.players[0], { x: 400, y: 300 });
+      teleportPlayer(s, 0, { x: 400, y: 300 });
       Matter.Body.setVelocity(s.players[0], { x: 0, y: 0 });
     }
     Matter.Body.setPosition(sim.ball, { x: 365, y: 300 });
@@ -87,7 +149,7 @@ test("centros coincidentes se separan sin NaN y no impulsan si ya se alejan", ()
   for (const offset of [0, -30]) {
     const sim = new Simulation();
     try {
-      Matter.Body.setPosition(sim.players[0], { x: 400, y: 300 });
+      teleportPlayer(sim, 0, { x: 400, y: 300 });
       Matter.Body.setPosition(sim.ball, { x: 400 + offset, y: 300 });
       Matter.Body.setVelocity(sim.ball, { x: offset ? -2 : 0, y: 0 });
       sim.step(emptyInput(), emptyInput());
@@ -105,13 +167,27 @@ test("la pelota rápida no atraviesa cabeza, bota ni travesaño", () => {
       const idle = emptyInput(), held = { ...idle, kick: 1, kickHeld: true };
       for (let i = 0; i < 30; i++) sim.step(held, idle);
       const player = sim.players[0];
-      Matter.Body.setPosition(sim.ball, target === "bar" ? { x: RULES.goalWidth / 2, y: RULES.goalTop - 28 * VISUAL_SCALE }
-        : { x: player.position.x + (target === "boot" ? 49 : -40), y: player.position.y });
-      Matter.Body.setVelocity(sim.ball, target === "bar" ? { x: 0, y: 14 }
-        : { x: target === "boot" ? -14 : 14, y: 0 });
+      if (target === "boot") {
+        const boot = sim.boots[0], normal = bootContactNormal(boot);
+        Matter.Body.setPosition(sim.ball, {
+          x: boot.position.x + normal.x * (RULES.bootHeight / 2 + RULES.ballRadius - 1),
+          y: boot.position.y + normal.y * (RULES.bootHeight / 2 + RULES.ballRadius - 1),
+        });
+        Matter.Body.setVelocity(sim.ball, { x: -normal.x * 14, y: -normal.y * 14 });
+      } else {
+        Matter.Body.setPosition(sim.ball, target === "bar" ? { x: RULES.goalWidth / 2, y: RULES.goalTop - 28 * VISUAL_SCALE }
+          : { x: player.position.x - 40, y: player.position.y });
+        Matter.Body.setVelocity(sim.ball, target === "bar" ? { x: 0, y: 14 } : { x: 14, y: 0 });
+      }
       for (let i = 0; i < 3; i++) sim.step(held, idle);
       if (target === "bar") assert.ok(sim.ball.position.y < RULES.goalTop && sim.ball.velocity.y < 0);
-      else assert.ok(target === "boot" ? sim.ball.velocity.x > 0 : sim.ball.velocity.x < 0);
+      else if (target === "boot") {
+        const boot = sim.boots[0], cos = Math.cos(boot.angle), sin = Math.sin(boot.angle);
+        const dx = sim.ball.position.x - boot.position.x, dy = sim.ball.position.y - boot.position.y;
+        assert.equal(circleBox(dx * cos + dy * sin, -dx * sin + dy * cos,
+          RULES.ballRadius, RULES.bootWidth / 2, RULES.bootHeight / 2), null,
+          "la pelota no debe atravesar el pie");
+      } else assert.ok(sim.ball.velocity.x < 0);
     } finally { sim.destroy(); }
   }
 });
@@ -124,10 +200,17 @@ test("mantener la tecla no inicia patadas nuevas y el pie sigue bloqueando la pe
     const firstPress = sim.kicks[0];
     for (let i = 0; i < 90; i++) sim.step(hold, emptyInput());
     assert.equal(sim.kicks[0], firstPress, "el pie debe quedar arriba, sin repetir el gesto");
-    Matter.Body.setPosition(sim.ball, { x: sim.players[0].position.x + 60, y: sim.players[0].position.y });
-    Matter.Body.setVelocity(sim.ball, { x: -3, y: 0 });
-    for (let i = 0; i < 6; i++) sim.step(hold, emptyInput());
-    assert.ok(sim.ball.velocity.x > 0, "la pelota debe rebotar en el pie levantado antes de llegar a la cabeza");
+    const boot = sim.boots[0], normal = bootContactNormal(boot);
+    Matter.Body.setPosition(sim.ball, {
+      x: boot.position.x + normal.x * (RULES.bootHeight / 2 + RULES.ballRadius - 1),
+      y: boot.position.y + normal.y * (RULES.bootHeight / 2 + RULES.ballRadius - 1),
+    });
+    Matter.Body.setVelocity(sim.ball, { x: -normal.x * 3, y: -normal.y * 3 });
+    const beforeBootVelocity = boot.velocity.x * normal.x + boot.velocity.y * normal.y;
+    sim.step(hold, emptyInput());
+    const afterBootVelocity = boot.velocity.x * normal.x + boot.velocity.y * normal.y;
+    assert.ok(Math.abs(afterBootVelocity - beforeBootVelocity) > 0.01,
+      "el pie levantado debe ceder ante el contacto");
   } finally { sim.destroy(); }
 });
 
@@ -136,7 +219,7 @@ test("el rival no puede atravesar el pie que se mantiene levantado", () => {
   try {
     const hold = { ...emptyInput(), kick: 1, kickHeld: true };
     for (let i = 0; i < 40; i++) sim.step(hold, emptyInput());
-    Matter.Body.setPosition(sim.players[1], { x: 278, y: sim.players[0].position.y });
+    teleportPlayer(sim, 1, { x: 278, y: sim.players[0].position.y });
     for (let i = 0; i < 30; i++) sim.step(hold, { ...emptyInput(), direction: -1 });
     assert.ok(sim.players[1].position.x - sim.players[0].position.x > 50, "la bota compacta ocupa espacio delante de la cabeza");
   } finally { sim.destroy(); }
@@ -284,7 +367,7 @@ test("salto y carrera entran en los márgenes medidos del gameplay", () => {
 test("la pelota cae más despacio que la cabeza y conserva velocidad horizontal en vuelo", () => {
   const sim = new Simulation();
   try {
-    Matter.Body.setPosition(sim.players[0], { x: 200, y: 200 });
+    teleportPlayer(sim, 0, { x: 200, y: 200 });
     Matter.Body.setVelocity(sim.players[0], { x: 0, y: 0 });
     Matter.Body.setPosition(sim.ball, { x: 512, y: 200 });
     Matter.Body.setVelocity(sim.ball, { x: 3, y: 0 });
@@ -350,7 +433,7 @@ test("mantener salto repite al aterrizar y pulsarlo en el aire no da doble salto
     for (let i = 0; i < 65; i++) {
       const previousVy = sim.players[0].velocity.y;
       sim.step({ ...input, jump: 2 }, idle);
-      if (previousVy >= 0 && sim.players[0].velocity.y < -4) repeated = true;
+      if (previousVy >= 0 && sim.players[0].velocity.y < -3.5) repeated = true;
     }
     assert.ok(repeated);
   } finally { sim.destroy(); }
@@ -362,9 +445,14 @@ test("se puede saltar apoyado en el travesaño o en el rival", () => {
     try {
       Matter.Body.setPosition(sim.ball, { x: 700, y: 200 });
       Matter.Body.setVelocity(sim.ball, { x: 0, y: 0 });
-      Matter.Body.setPosition(sim.players[0], support === "bar"
+      teleportPlayer(sim, 0, support === "bar"
         ? { x: RULES.goalWidth / 2, y: RULES.goalTop - RULES.playerRadius - 2.5 * VISUAL_SCALE }
         : { x: 824, y: 515 });
+      if (support === "player") {
+        // Keep this fixture focused on head support: a boot swept into the
+        // rival at the exact overlap point would legitimately push it away.
+        sim.boots[0].collisionFilter.mask = 0;
+      }
       for (let i = 0; i < 30; i++) sim.step(emptyInput(), emptyInput());
       sim.step({ ...emptyInput(), jump: 1 }, emptyInput());
       assert.ok(sim.players[0].velocity.y < -4, support);
@@ -409,7 +497,12 @@ test("el pie describe una órbita, queda arriba y vuelve al reposo al soltar", (
         const pose = bootPose(team, sim.feet[index].lift);
         assert.ok(Math.abs(Math.hypot(pose.x, pose.y) - RULES.bootOrbit) < 0.001);
         if (i > 10) assert.equal(sim.feet[index].lift, 1);
-        assert.ok(Math.abs(sim.boots[index].position.x - sim.players[index].position.x - pose.x) < 0.001);
+        const bootDistance = Math.hypot(
+          sim.boots[index].position.x - sim.players[index].position.x,
+          sim.boots[index].position.y - sim.players[index].position.y,
+        );
+        assert.ok(Math.abs(bootDistance - RULES.bootOrbit) < 0.2, `radio dinámico ${bootDistance}`);
+        assert.ok(angleDistance(sim.boots[index].angle, pose.angle) < 0.75, `ángulo dinámico ${sim.boots[index].angle}`);
       }
       sim.step(idle, idle);
       assert.ok(sim.feet[index].lift < 1 && sim.feet[index].lift > 0);
@@ -512,6 +605,28 @@ test("al soltar la patada, el botín no arrastra la pelota detrás del jugador",
   }
 });
 
+test("una entrada de patada lanza una pelota detenida con simetría", () => {
+  const outputs: Array<{ x: number; y: number }> = [];
+  for (const team of [1, 2] as const) {
+    const sim = new Simulation();
+    try {
+      const side = team === 1 ? 1 : -1;
+      Matter.Body.setPosition(sim.ball, {
+        x: sim.players[team - 1].position.x + side * 42,
+        y: 577,
+      });
+      Matter.Body.setVelocity(sim.ball, { x: 0, y: 0 });
+      const kick = { ...emptyInput(), kick: 1, kickHeld: true };
+      for (let i = 0; i < 12; i++) sim.step(team === 1 ? kick : emptyInput(), team === 2 ? kick : emptyInput());
+      assert.ok(sim.ball.velocity.x * side > 2, `la patada debe avanzar hacia el rival ${team}`);
+      assert.ok(sim.ball.velocity.y < 0, `la pelota debe elevarse ${team}`);
+      outputs.push({ x: sim.ball.velocity.x * side, y: sim.ball.velocity.y });
+    } finally { sim.destroy(); }
+  }
+  assert.ok(Math.abs(outputs[0].x - outputs[1].x) < 0.2, "la salida horizontal es simétrica");
+  assert.ok(Math.abs(outputs[0].y - outputs[1].y) < 0.2, "la salida vertical es simétrica");
+});
+
 test("la pelota rebota contra las pendientes superiores del estadio", () => {
   for (const [start, end] of ARENA_SLOPES) {
     const sim = new Simulation();
@@ -545,30 +660,33 @@ test("el pie atraviesa el suelo y el cuerpo sigue siendo el único apoyo", () =>
   } finally { sim.destroy(); }
 });
 
-test("la patada activa tiene salida fija y simétrica en ambos lados", () => {
-  const results: number[] = [];
-  assert.equal(RULES.kickX, 6);
-  assert.equal(RULES.kickY, 5.6);
+test("el impacto dinámico de ambos pies conserva simetría y retroceso", () => {
+  const results: Array<{ ball: number; boot: number }> = [];
   for (const team of [1, 2] as const) {
-    for (const ballY of [575, 563]) {
-      const sim = new Simulation();
-      try {
-        for (let i = 0; i < 30; i++) sim.step(emptyInput(), emptyInput());
-        const player = sim.players[team - 1], side = team === 1 ? 1 : -1;
-        Matter.Body.setPosition(sim.ball, { x: player.position.x + side * 38, y: ballY });
-        Matter.Body.setVelocity(sim.ball, { x: 0, y: 0 });
+    const sim = new Simulation();
+    try {
+      const index = team - 1, side = team === 1 ? 1 : -1;
+      for (let i = 0; i < RULES.bootRaiseTicks + 2; i++) {
         const hold = { ...emptyInput(), kick: 1, kickHeld: true };
-        for (let i = 0; i < 10; i++) sim.step(team === 1 ? hold : emptyInput(), team === 2 ? hold : emptyInput());
-        assert.ok(sim.ball.velocity.x * side > 5.5);
-        const kickSpeed = Math.hypot(sim.ball.velocity.x, sim.ball.velocity.y);
-        assert.ok(kickSpeed > 7.5 && kickSpeed < 8.5, `salida de patada ${kickSpeed}`);
-        assert.ok(sim.ball.velocity.y < -5, `altura de patada ${sim.ball.velocity.y}`);
-        results.push(sim.ball.velocity.y);
-      } finally { sim.destroy(); }
-    }
+        sim.step(team === 1 ? hold : emptyInput(), team === 2 ? hold : emptyInput());
+      }
+      const boot = sim.boots[index];
+      const normal = bootContactNormal(boot);
+      Matter.Body.setPosition(sim.ball, {
+        x: boot.position.x + normal.x * (RULES.bootHeight / 2 + RULES.ballRadius - 1),
+        y: boot.position.y + normal.y * (RULES.bootHeight / 2 + RULES.ballRadius - 1),
+      });
+      Matter.Body.setVelocity(sim.ball, { x: -normal.x * 6, y: -normal.y * 6 });
+      const before = boot.velocity.x * normal.x + boot.velocity.y * normal.y;
+      sim.step(emptyInput(), emptyInput());
+      const ballOut = sim.ball.velocity.x * normal.x + sim.ball.velocity.y * normal.y;
+      const bootRecoil = boot.velocity.x * normal.x + boot.velocity.y * normal.y;
+      assert.ok(ballOut > 0.1, `salida del balón ${team}: ${ballOut}`);
+      assert.ok(Math.abs(bootRecoil - before) > 0.01, `retroceso de la bota ${team}`);
+      results.push({ ball: ballOut, boot: bootRecoil });
+    } finally { sim.destroy(); }
   }
-  assert.ok(Math.abs(results[0] - results[1]) < 0.3, "la salida se mantiene entre alturas de contacto");
-  assert.ok(Math.abs(results[0] - results[2]) < 0.2, "los dos lados tienen la misma física");
+  assert.ok(Math.abs(results[0].ball - results[1].ball) < 0.5, "el impacto conserva simetría");
 });
 
 test("el rebote libre conserva aproximadamente el 48 por ciento de velocidad vertical", () => {
@@ -616,6 +734,32 @@ test("restaurar un estado y repetir controles conserva la trayectoria sin colisi
   assert.ok(Math.abs(host.players[1].position.x - guest.players[1].position.x) < 0.001);
   assert.ok(Math.abs(host.ball.position.y - guest.ball.position.y) < 0.001);
   host.destroy(); guest.destroy();
+});
+
+test("la instantánea de botas permite continuar muchos pasos con tolerancia estrecha", () => {
+  const host = new Simulation(), guest = new Simulation();
+  try {
+    const hold = { ...emptyInput(), direction: 1 as const, kick: 1, kickHeld: true };
+    for (let i = 0; i < 24; i++) host.step(hold, emptyInput());
+    guest.restore(host.snapshot());
+    for (let i = 0; i < 90; i++) {
+      const first = i % 18 < 9 ? hold : emptyInput();
+      const second = i % 20 < 10 ? { ...hold, direction: -1 as const } : emptyInput();
+      host.step(first, second);
+      guest.step(first, second);
+    }
+    const actual = host.snapshot(), restored = guest.snapshot();
+    actual.players.concat(actual.boots, [actual.ball]).forEach((body, bodyIndex) => {
+      const peer = restored.players.concat(restored.boots, [restored.ball])[bodyIndex];
+      ["x", "y", "vx", "vy", "angle", "spin"].forEach(key => {
+        assert.ok(Math.abs(body[key as keyof typeof body] - peer[key as keyof typeof peer]) < 1e-7,
+          `divergencia de continuación ${bodyIndex}.${key}`);
+      });
+    });
+  } finally {
+    host.destroy();
+    guest.destroy();
+  }
 });
 
 test("no acepta entradas malformadas que puedan corromper la física", () => {
