@@ -391,10 +391,19 @@ test("restaurar durante el barrido conserva la posición del pie y la trayectori
 });
 
 test("el pie describe una órbita, queda arriba y vuelve al reposo al soltar", () => {
+  assert.equal(RULES.bootOrbit, 27 * VISUAL_SCALE);
   for (const team of [1, 2] as const) {
     const sim = new Simulation();
     try {
       const idle = emptyInput(), hold = { ...idle, kick: 1, kickHeld: true }, index = team - 1;
+      const side = team === 1 ? 1 : -1;
+      const rest = bootPose(team, 0), raised = bootPose(team, 1);
+      assert.ok(rest.x * side < 0, "el pie empieza detrás y debajo del cuerpo");
+      assert.ok(rest.y > 29 && rest.y < 31);
+      assert.ok(raised.x * side > 34 && raised.x * side < 35, "el pie termina delante del cuerpo");
+      assert.ok(Math.abs(raised.y) < 0.001, "el pie termina a la altura del centro del cuerpo");
+      for (let i = 0; i < 3; i++) sim.step(team === 1 ? hold : idle, team === 2 ? hold : idle);
+      assert.ok(sim.feet[index].lift < 0.5, "el barrido no debe completarse en los tres ticks actuales");
       for (let i = 0; i < 80; i++) {
         sim.step(team === 1 ? hold : idle, team === 2 ? hold : idle);
         const pose = bootPose(team, sim.feet[index].lift);
@@ -415,10 +424,22 @@ test("el pie describe una órbita, queda arriba y vuelve al reposo al soltar", (
   }
 });
 
+test("el pie atraviesa el suelo y el cuerpo sigue siendo el único apoyo", () => {
+  const sim = new Simulation();
+  try {
+    const idle = emptyInput();
+    for (let i = 0; i < 60; i++) sim.step(idle, idle);
+    const player = sim.players[0], boot = sim.boots[0];
+    assert.equal(boot.collisionFilter.mask & 1, 0, "el pie no colisiona con el mundo");
+    assert.ok(player.position.y + RULES.playerRadius <= PITCH_FLOOR_Y + 0.1, "el cuerpo apoya sobre el piso");
+    assert.ok(boot.position.y + RULES.bootHeight / 2 > PITCH_FLOOR_Y, "el pie puede atravesar visualmente el piso");
+  } finally { sim.destroy(); }
+});
+
 test("la patada activa tiene salida fija y simétrica en ambos lados", () => {
   const results: number[] = [];
-  assert.equal(RULES.kickX, 6.8);
-  assert.equal(RULES.kickY, 4.4);
+  assert.equal(RULES.kickX, 6);
+  assert.equal(RULES.kickY, 5.6);
   for (const team of [1, 2] as const) {
     for (const ballY of [575, 563]) {
       const sim = new Simulation();
@@ -429,10 +450,10 @@ test("la patada activa tiene salida fija y simétrica en ambos lados", () => {
         Matter.Body.setVelocity(sim.ball, { x: 0, y: 0 });
         const hold = { ...emptyInput(), kick: 1, kickHeld: true };
         for (let i = 0; i < 10; i++) sim.step(team === 1 ? hold : emptyInput(), team === 2 ? hold : emptyInput());
-        assert.ok(sim.ball.velocity.x * side > 6);
+        assert.ok(sim.ball.velocity.x * side > 5.5);
         const kickSpeed = Math.hypot(sim.ball.velocity.x, sim.ball.velocity.y);
-        assert.ok(kickSpeed > 7 && kickSpeed < 8.2, `salida de patada ${kickSpeed}`);
-        assert.ok(sim.ball.velocity.y < -3, `altura de patada ${sim.ball.velocity.y}`);
+        assert.ok(kickSpeed > 7.5 && kickSpeed < 8.5, `salida de patada ${kickSpeed}`);
+        assert.ok(sim.ball.velocity.y < -5, `altura de patada ${sim.ball.velocity.y}`);
         results.push(sim.ball.velocity.y);
       } finally { sim.destroy(); }
     }

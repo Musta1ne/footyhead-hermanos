@@ -13,14 +13,14 @@ export const RULES = {
   playerRadius: 22 * VISUAL_SCALE, ballRadius: 10 * VISUAL_SCALE, ballRestitution: 0.48, wallRestitution: 0.45,
   ballDamping: 0.998,
   maxBallSpeed: 10.5, serveY: 295, serveXSpeed: 2.5, serveYSpeed: -1.8,
-  bootRadius: 8 * VISUAL_SCALE, bootOrbit: 23 * VISUAL_SCALE, bootRestAngle: 1.05,
-  bootRaiseTicks: 3, bootLowerTicks: 8, bootTapTicks: 6, bootMotionTransfer: 0.55,
+  bootRadius: 8 * VISUAL_SCALE, bootOrbit: 27 * VISUAL_SCALE, bootRestAngle: 1.05,
+  bootRaiseTicks: 8, bootLowerTicks: 8, bootTapTicks: 6, bootMotionTransfer: 0.55,
   bootWidth: 16 * VISUAL_SCALE, bootHeight: 18 * VISUAL_SCALE,
   goalWidth: REFERENCE_VISUALS.goal.width * VISUAL_SCALE,
   goalTop: PITCH_FLOOR_Y - REFERENCE_VISUALS.goal.height * VISUAL_SCALE,
   goalScoreX: 65 * VISUAL_SCALE, goalScoreY: PITCH_FLOOR_Y - (590 - 480) * VISUAL_SCALE,
   goalPauseTicks: 45,
-  headRestitution: 0.4, bootRestitution: 0.45, kickX: 6.8, kickY: 4.4,
+  headRestitution: 0.4, bootRestitution: 0.45, kickX: 6, kickY: 5.6,
   inputTimeoutMs: 750, snapshotEveryTicks: 2,
   matchTicks: 60 * 60,
 };
@@ -40,9 +40,11 @@ const { Engine, Bodies, Body, Composite, Query } = Matter;
 // lift=0: reposo; lift=1: pie levantado. La órbita no atraviesa la cabeza.
 // Dibujo y cuerpo sólido usan exactamente la misma posición.
 export function bootPose(team: Team, lift: number) {
-  const orbitAngle = RULES.bootRestAngle * (1 - lift);
+  // La referencia original barre desde atrás y abajo del cuerpo hasta delante,
+  // a la altura de su centro; ambos lados usan exactamente el mismo espejo.
+  const orbitAngle = RULES.bootRestAngle + (Math.PI - RULES.bootRestAngle) * lift;
   const side = team === 1 ? 1 : -1;
-  return { x: side * Math.cos(orbitAngle) * RULES.bootOrbit, y: Math.sin(orbitAngle) * RULES.bootOrbit, angle: side * (-1.3 + lift * 1.8) };
+  return { x: -side * Math.cos(orbitAngle) * RULES.bootOrbit, y: Math.sin(orbitAngle) * RULES.bootOrbit, angle: side * (-1.3 + lift * 1.8) };
 }
 
 const COLLISION = { world: 1, head: 2, ball: 4, foot: 8 };
