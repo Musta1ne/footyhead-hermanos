@@ -77,12 +77,11 @@ compartida de `feet`. La respuesta queda integrada por Matter en cada subpaso,
 incluidas las fuerzas y torques de los contactos; no se inyecta una velocidad
 horizontal o vertical fija al patear.
 
-El ascenso y el descenso del gesto duran 16 ticks (aproximadamente 267 ms)
-cada uno; un toque detectado entre fotogramas mantiene el ascenso durante 12
-ticks. La misma orbita y el mismo resorte fisico se conservan. Frente al ascenso
-anterior de 8 ticks, la velocidad angular maxima del pie sin contacto baja de
-aproximadamente 0,43 a 0,22 radianes por tick y el sobrepaso de la posicion
-levantada baja de 35% a cerca de 7%. Ambos jugadores usan el mismo ritmo.
+El ascenso y el descenso del gesto duran 12 ticks (aproximadamente 200 ms)
+cada uno; un toque detectado entre fotogramas mantiene el ascenso durante 9
+ticks. La misma orbita y el mismo resorte fisico se conservan. Este ritmo queda
+entre el ascenso inicial de 8 ticks y el de 16 ticks; ambos jugadores usan el
+mismo gesto.
 
 El damping se aplica en cada subpaso como `0,998^(1/3)`, equivalente a 0,998
 por tick de 60 Hz. No se aplica friccion tangencial artificial en contactos:

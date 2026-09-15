@@ -39,9 +39,11 @@ test("la patada sube gradualmente sin sacudida ni rebote angular grande", () => 
         progress.push(side * (boot.angle - rest) / travel);
         peakSpin = Math.max(peakSpin, Math.abs(boot.angularVelocity));
       }
-      assert.ok(progress[7] < 0.65, `la bota ${team} sube demasiado rápido: ${progress[7]}`);
-      assert.ok(peakSpin < 0.25, `la bota ${team} gira bruscamente: ${peakSpin}`);
-      assert.ok(Math.max(...progress) < 1.15, `la bota ${team} rebota más allá de la patada: ${Math.max(...progress)}`);
+      assert.ok(progress[7] > 0.6 && progress[7] < 0.85,
+        `la bota ${team} sale del ritmo intermedio: ${progress[7]}`);
+      assert.ok(peakSpin > 0.25 && peakSpin < 0.35,
+        `la bota ${team} gira fuera del ritmo intermedio: ${peakSpin}`);
+      assert.ok(Math.max(...progress) < 1.25, `la bota ${team} rebota más allá de la patada: ${Math.max(...progress)}`);
       assert.ok(progress[34] > 0.8, `la bota ${team} no llega a la posición levantada: ${progress[34]}`);
     } finally {
       sim.destroy();
