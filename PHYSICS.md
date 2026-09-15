@@ -75,16 +75,22 @@ paso.
 
 ## Contactos de la pelota y proporciones del pie
 
-- Bota de 16x18 unidades, orbita de 23 y angulo de reposo de 1,05 rad: queda
+- La referencia usa un escenario de 800 px de ancho y este juego uno de 1024 px.
+  Jugadores, botas, pelota y arcos se dibujan con el mismo factor 1,28 para
+  conservar sus proporciones respecto de la cancha. Las colisiones usan el
+  mismo factor, de modo que las siluetas visibles y las superficies de contacto
+  no se separan.
+- Bota de 20,48x23,04 unidades, orbita de 29,44 y angulo de reposo de 1,05 rad: queda
   recogida delante y debajo de la cabeza. Dibujo y colision comparten el
   centro calculado por `bootPose`.
 - Pelota de masa 1, sin friccion de aire del motor Matter. Se integra
   explicitamente fuera del mundo Matter, a 60 Hz con tres subpasos, y aplica
   el damping calibrado arriba.
-- Cabeza circular de radio 22, con masa infinita frente a la pelota: se separa
+- Cabeza circular de radio 28,16 y pelota de radio 12,8. La cabeza conserva
+  masa infinita frente a la pelota: se separa
   solo la pelota y se aplica el impulso normal relativo con restitucion 0,4.
   Los centros coincidentes tienen una normal de salida segura.
-- Bota contra pelota: circulo/AABB de 16x18, con resolucion de caras, esquinas
+- Bota contra pelota: circulo/AABB de 20,48x23,04, con resolucion de caras, esquinas
   y centros interiores. El dibujo rota, la caja permanece alineada a ejes.
 - Durante los tres primeros ticks de una pulsacion, el contacto da una salida
   de (+/-6,8, -4,4) px/paso. La bota sube en tres ticks. Mantener Espacio la deja

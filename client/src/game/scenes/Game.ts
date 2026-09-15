@@ -3,6 +3,7 @@ import { Peer } from "../peer";
 import { ARCADE_FONT, drawGoal, drawStadium } from "./stadium";
 import { Simulation, RULES, bootPose, emptyInput, isInput, type Input, type Snapshot } from "../simulation";
 import { controlHint, controlKeyCode, getControlBindings, type ControlBindings } from "../control-bindings";
+import { VISUALS } from "../visual-proportions";
 
 export class Game extends Scene {
   private pin = "";
@@ -52,9 +53,9 @@ export class Game extends Scene {
     drawStadium(this);
     drawGoal(this, false);
     drawGoal(this, true);
-    this.heads = [1, 2].map(team => this.add.image(0, 0, `sprite-${team}`).setFlipX(team === 2));
-    this.boots = [1, 2].map(team => this.add.image(0, 0, `boot-${team}`).setDisplaySize(RULES.bootWidth, RULES.bootHeight));
-    this.ball = this.add.image(512, RULES.serveY, "football").setDisplaySize(RULES.ballRadius * 2, RULES.ballRadius * 2);
+    this.heads = [1, 2].map(team => this.add.image(0, 0, `sprite-${team}`).setDisplaySize(VISUALS.player.width, VISUALS.player.height).setFlipX(team === 2));
+    this.boots = [1, 2].map(team => this.add.image(0, 0, `boot-${team}`).setDisplaySize(VISUALS.boot.width, VISUALS.boot.height));
+    this.ball = this.add.image(512, RULES.serveY, "football").setDisplaySize(VISUALS.ball.width, VISUALS.ball.height);
     const scoreStyle = { fontFamily: ARCADE_FONT, fontSize: 60, color: "#245e27", stroke: "#fffbe7", strokeThickness: 5, shadow: { offsetX: 2, offsetY: 3, color: "#263b2a", blur: 4, fill: true } };
     this.scoreText = this.add.text(512, 207, "0 : 0", scoreStyle).setOrigin(0.5);
     this.cornerScores = [this.add.text(22, 56, "0", { ...scoreStyle, fontSize: 44, color: "#fffbe7", stroke: "#17211d", strokeThickness: 2 }), this.add.text(1002, 56, "0", { ...scoreStyle, fontSize: 44, color: "#fffbe7", stroke: "#17211d", strokeThickness: 2 }).setOrigin(1, 0)];

@@ -1,4 +1,5 @@
 import { Scene } from "phaser";
+import { PITCH_FLOOR_Y, REFERENCE_VISUALS, VISUALS } from "../visual-proportions";
 
 export const ARCADE_FONT = "Impact, Arial Black, sans-serif";
 
@@ -78,13 +79,18 @@ export function drawStadium(scene: Scene) {
 
 export function drawGoal(scene: Scene, right: boolean) {
   const g = scene.add.graphics();
-  const x = (value: number) => right ? 1024 - value : value;
-  g.fillStyle(0xeaf0dd, 0.15).fillRect(right ? 944 : 4, 465, 76, 125);
-  g.lineStyle(1, 0xf9f7e4, 0.9);
-  for (let col = 8; col < 80; col += 12) g.lineBetween(x(col), 467, x(col), 589);
-  for (let row = 478; row < 590; row += 15) g.lineBetween(x(5), row, x(78), row);
-  g.lineStyle(8, 0x25342c).lineBetween(x(80), 465, x(80), 590).lineBetween(x(4), 465, x(80), 465);
-  g.lineStyle(4, 0xf5f3da).lineBetween(x(80), 465, x(80), 590).lineBetween(x(4), 465, x(80), 465);
-  g.lineStyle(3, 0x657466).lineBetween(x(4), 465, x(4), 590);
+  const floor = PITCH_FLOOR_Y;
+  const widthScale = VISUALS.goal.width / REFERENCE_VISUALS.goal.width;
+  const heightScale = VISUALS.goal.height / REFERENCE_VISUALS.goal.height;
+  const gx = (value: number) => value * widthScale;
+  const gy = (value: number) => floor - (REFERENCE_VISUALS.goal.height - value) * heightScale;
+  const x = (value: number) => right ? 1024 - gx(value) : gx(value);
+  g.fillStyle(0xeaf0dd, 0.15).fillRect(right ? 1024 - VISUALS.goal.width : gx(4), gy(0), gx(76), VISUALS.goal.height);
+  g.lineStyle(widthScale, 0xf9f7e4, 0.9);
+  for (let col = 8; col < 80; col += 12) g.lineBetween(x(col), gy(2), x(col), gy(124));
+  for (let row = 13; row < 125; row += 15) g.lineBetween(x(5), gy(row), x(78), gy(row));
+  g.lineStyle(8 * widthScale, 0x25342c).lineBetween(x(80), gy(0), x(80), floor).lineBetween(x(4), gy(0), x(80), gy(0));
+  g.lineStyle(4 * widthScale, 0xf5f3da).lineBetween(x(80), gy(0), x(80), floor).lineBetween(x(4), gy(0), x(80), gy(0));
+  g.lineStyle(3 * widthScale, 0x657466).lineBetween(x(4), gy(0), x(4), floor);
 }
 

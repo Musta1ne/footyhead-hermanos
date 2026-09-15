@@ -5,6 +5,7 @@
 | Archivo | Qué cambiar ahí |
 | --- | --- |
 | `client/src/game/simulation.ts` | Reglas, velocidades, tamaño del campo, salto, patadas y goles. `RULES` agrupa las constantes de jugabilidad. |
+| `client/src/game/visual-proportions.ts` | Escala compartida de jugadores, botas, pelota y arcos respecto de la referencia de 800 px. |
 | `client/src/game/scenes/Game.ts` | Flechas/Espacio, dibujo de los personajes, marcador, predicción y correcciones del invitado. |
 | `client/src/game/scenes/stadium.ts` | Tribunas, césped, arcos y decoración arcade; no modifica la física. |
 | `client/src/routes/game.tsx` y `client/src/layout/game.css` | Marco adaptable de la partida, botón de sonido y regreso al menú. |
@@ -39,7 +40,7 @@ balón, separado de su colisión. Las medidas y aproximaciones están en
 
 Se eliminaron la dirección de Render, la conexión a Colyseus y la física del servidor. La API usa el origen de la página, de modo que no hay una URL diferente escondida en el cliente.
 
-Los 1024×768 del campo y las posiciones de los arcos son coordenadas del diseño original. La velocidad y los tiempos son parámetros del juego, no datos de infraestructura. Están en `simulation.ts` para poder cambiarlos sin recorrer servidor y cliente.
+El campo usa 1024×768 unidades. Los objetos de la referencia de 800 px se escalan por 1,28 para conservar sus proporciones, y sus colisiones acompañan el dibujo. La velocidad y los tiempos son parámetros del juego, no datos de infraestructura. Están en `simulation.ts` para poder cambiarlos sin recorrer servidor y cliente.
 
 Los servidores STUN predeterminados están en `/api/config` del Worker. Se pueden reemplazar mediante `ICE_SERVERS_JSON` en el alojamiento. No agregar contraseñas al repositorio.
 

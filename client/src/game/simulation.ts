@@ -1,4 +1,5 @@
 import Matter from "matter-js";
+import { PITCH_FLOOR_Y, REFERENCE_VISUALS, VISUAL_SCALE } from "./visual-proportions";
 
 // Única definición de las reglas: anfitrión y predicción usan la misma física.
 export const RULES = {
@@ -9,12 +10,16 @@ export const RULES = {
   playerGravity: 0.145, ballGravity: 0.1,
   // The original SWF uses 0.6 restitution. Keep this arena a little calmer
   // while preserving enough energy for visible rebounds and longer passes.
-  playerRadius: 22, ballRadius: 12, ballRestitution: 0.48, wallRestitution: 0.45,
+  playerRadius: 22 * VISUAL_SCALE, ballRadius: 10 * VISUAL_SCALE, ballRestitution: 0.48, wallRestitution: 0.45,
   ballDamping: 0.998,
   maxBallSpeed: 10.5, serveY: 295, serveXSpeed: 2.5, serveYSpeed: -1.8,
-  bootRadius: 8, bootOrbit: 23, bootRestAngle: 1.05,
+  bootRadius: 8 * VISUAL_SCALE, bootOrbit: 23 * VISUAL_SCALE, bootRestAngle: 1.05,
   bootRaiseTicks: 3, bootLowerTicks: 8, bootTapTicks: 6, bootMotionTransfer: 0.55,
-  bootWidth: 16, bootHeight: 18, goalPauseTicks: 45,
+  bootWidth: 16 * VISUAL_SCALE, bootHeight: 18 * VISUAL_SCALE,
+  goalWidth: REFERENCE_VISUALS.goal.width * VISUAL_SCALE,
+  goalTop: PITCH_FLOOR_Y - REFERENCE_VISUALS.goal.height * VISUAL_SCALE,
+  goalScoreX: 65 * VISUAL_SCALE, goalScoreY: PITCH_FLOOR_Y - (590 - 480) * VISUAL_SCALE,
+  goalPauseTicks: 45,
   headRestitution: 0.4, bootRestitution: 0.45, kickX: 6.8, kickY: 4.4,
   inputTimeoutMs: 750, snapshotEveryTicks: 2,
   matchTicks: 60 * 60,
@@ -108,8 +113,8 @@ export class Simulation {
       Bodies.rectangle(1034, 300, 20, 768, { isStatic: true, restitution: RULES.wallRestitution }),
       Bodies.rectangle(512, -10, 1024, 20, { isStatic: true, restitution: RULES.wallRestitution }),
       Bodies.rectangle(512, 600, 1024, 20, { isStatic: true, friction: 0.3 }),
-      Bodies.rectangle(40, 465, 80, 5, { isStatic: true, angle: 0.05, restitution: RULES.wallRestitution }),
-      Bodies.rectangle(984, 465, 80, 5, { isStatic: true, angle: -0.05, restitution: RULES.wallRestitution }),
+      Bodies.rectangle(RULES.goalWidth / 2, RULES.goalTop, RULES.goalWidth, 5 * VISUAL_SCALE, { isStatic: true, angle: 0.05, restitution: RULES.wallRestitution }),
+      Bodies.rectangle(1024 - RULES.goalWidth / 2, RULES.goalTop, RULES.goalWidth, 5 * VISUAL_SCALE, { isStatic: true, angle: -0.05, restitution: RULES.wallRestitution }),
     ]);
     this.serve();
   }
@@ -174,8 +179,8 @@ export class Simulation {
     }
     this.feet.forEach(foot => { foot.tapTicks = Math.max(0, foot.tapTicks - 1); });
     const { x, y } = this.ball.position;
-    if (y > 480 && (x < 65 || x > 959)) {
-      this.score[x < 65 ? 1 : 0]++;
+    if (y > RULES.goalScoreY && (x < RULES.goalScoreX || x > 1024 - RULES.goalScoreX)) {
+      this.score[x < RULES.goalScoreX ? 1 : 0]++;
       this.round++;
       this.pause = RULES.goalPauseTicks;
     }
@@ -276,16 +281,16 @@ export class Simulation {
       contact(nx, ny, overlap, RULES.headRestitution, player.velocity.x, player.velocity.y);
     });
     // Las barras conservan su inclinación visual: círculo contra caja en su espacio local.
-    for (const [cx, angle] of [[40, 0.05], [984, -0.05]]) {
-      const cos = Math.cos(angle), sin = Math.sin(angle), dx = x - cx, dy = y - 465;
-      const hit = circleBox(dx * cos + dy * sin, -dx * sin + dy * cos, radius, 40, 2.5);
+    for (const [cx, angle] of [[RULES.goalWidth / 2, 0.05], [1024 - RULES.goalWidth / 2, -0.05]]) {
+      const cos = Math.cos(angle), sin = Math.sin(angle), dx = x - cx, dy = y - RULES.goalTop;
+      const hit = circleBox(dx * cos + dy * sin, -dx * sin + dy * cos, radius, RULES.goalWidth / 2, 2.5 * VISUAL_SCALE);
       if (hit) contact(hit.nx * cos - hit.ny * sin, hit.nx * sin + hit.ny * cos, hit.depth, RULES.wallRestitution);
     }
     if (x < radius) contact(1, 0, radius - x, RULES.wallRestitution);
     if (x > 1024 - radius) contact(-1, 0, x - (1024 - radius), RULES.wallRestitution);
     if (y < radius) contact(0, 1, radius - y, RULES.wallRestitution);
-    if (y >= 590 - radius) {
-      contact(0, -1, y - (590 - radius), RULES.ballRestitution);
+    if (y >= PITCH_FLOOR_Y - radius) {
+      contact(0, -1, y - (PITCH_FLOOR_Y - radius), RULES.ballRestitution);
       if (Math.abs(vy) < RULES.ballGravity * dt) vy = 0;
     }
     Body.setPosition(this.ball, { x, y });

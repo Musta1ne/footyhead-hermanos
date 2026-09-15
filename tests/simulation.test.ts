@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import Matter from "../client/node_modules/matter-js/build/matter.js";
 import { Simulation, bootPose, circleBox, emptyInput, RULES, isInput } from "../client/src/game/simulation";
+import { PITCH_FLOOR_Y, VISUAL_SCALE } from "../client/src/game/visual-proportions";
 
 test("la pelota tiene una salida contenida y pierde velocidad entre contactos", () => {
   const sim = new Simulation();
@@ -104,12 +105,12 @@ test("la pelota rápida no atraviesa cabeza, bota ni travesaño", () => {
       const idle = emptyInput(), held = { ...idle, kick: 1, kickHeld: true };
       for (let i = 0; i < 30; i++) sim.step(held, idle);
       const player = sim.players[0];
-      Matter.Body.setPosition(sim.ball, target === "bar" ? { x: 40, y: 437 }
+      Matter.Body.setPosition(sim.ball, target === "bar" ? { x: RULES.goalWidth / 2, y: RULES.goalTop - 28 * VISUAL_SCALE }
         : { x: player.position.x + (target === "boot" ? 49 : -40), y: player.position.y });
       Matter.Body.setVelocity(sim.ball, target === "bar" ? { x: 0, y: 14 }
         : { x: target === "boot" ? -14 : 14, y: 0 });
       for (let i = 0; i < 3; i++) sim.step(held, idle);
-      if (target === "bar") assert.ok(sim.ball.position.y < 465 && sim.ball.velocity.y < 0);
+      if (target === "bar") assert.ok(sim.ball.position.y < RULES.goalTop && sim.ball.velocity.y < 0);
       else assert.ok(target === "boot" ? sim.ball.velocity.x > 0 : sim.ball.velocity.x < 0);
     } finally { sim.destroy(); }
   }
@@ -303,17 +304,17 @@ test("los rebotes libres pierden altura y la pelota no atraviesa el travesaño",
     let oldVy = 0;
     for (let i = 0; i < 300 && peaks.length < 2; i++) {
       sim.step(emptyInput(), emptyInput());
-      if (oldVy < 0 && sim.ball.velocity.y >= 0) peaks.push(578 - sim.ball.position.y);
+      if (oldVy < 0 && sim.ball.velocity.y >= 0) peaks.push(PITCH_FLOOR_Y - RULES.ballRadius - sim.ball.position.y);
       oldVy = sim.ball.velocity.y;
     }
     assert.equal(peaks.length, 2);
     assert.ok(peaks[0] > 30 && peaks[0] < 45);
     assert.ok(peaks[1] > 0.5 && peaks[1] < peaks[0] * 0.7);
-    Matter.Body.setPosition(sim.ball, { x: 40, y: 430 });
+    Matter.Body.setPosition(sim.ball, { x: RULES.goalWidth / 2, y: RULES.goalTop - 28 * VISUAL_SCALE });
     Matter.Body.setVelocity(sim.ball, { x: 0, y: 14 });
     for (let i = 0; i < 5; i++) sim.step(emptyInput(), emptyInput());
     assert.equal(sim.round, 0);
-    assert.ok(sim.ball.position.y < 465 && sim.ball.velocity.y < 0);
+    assert.ok(sim.ball.position.y < RULES.goalTop && sim.ball.velocity.y < 0);
   } finally { sim.destroy(); }
 });
 
@@ -361,7 +362,9 @@ test("se puede saltar apoyado en el travesaño o en el rival", () => {
     try {
       Matter.Body.setPosition(sim.ball, { x: 700, y: 200 });
       Matter.Body.setVelocity(sim.ball, { x: 0, y: 0 });
-      Matter.Body.setPosition(sim.players[0], support === "bar" ? { x: 40, y: 438 } : { x: 824, y: 515 });
+      Matter.Body.setPosition(sim.players[0], support === "bar"
+        ? { x: RULES.goalWidth / 2, y: RULES.goalTop - RULES.playerRadius - 2.5 * VISUAL_SCALE }
+        : { x: 824, y: 515 });
       for (let i = 0; i < 30; i++) sim.step(emptyInput(), emptyInput());
       sim.step({ ...emptyInput(), jump: 1 }, emptyInput());
       assert.ok(sim.players[0].velocity.y < -4, support);
@@ -395,7 +398,7 @@ test("el pie describe una órbita, queda arriba y vuelve al reposo al soltar", (
       for (let i = 0; i < 80; i++) {
         sim.step(team === 1 ? hold : idle, team === 2 ? hold : idle);
         const pose = bootPose(team, sim.feet[index].lift);
-        assert.ok(Math.abs(Math.hypot(pose.x, pose.y) - 23) < 0.001);
+        assert.ok(Math.abs(Math.hypot(pose.x, pose.y) - RULES.bootOrbit) < 0.001);
         if (i > 10) assert.equal(sim.feet[index].lift, 1);
         assert.ok(Math.abs(sim.boots[index].position.x - sim.players[index].position.x - pose.x) < 0.001);
       }
