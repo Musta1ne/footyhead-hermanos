@@ -12,7 +12,7 @@ export const RULES = {
   // while preserving enough energy for visible rebounds and longer passes.
   playerRadius: 22 * VISUAL_SCALE, ballRadius: 10 * VISUAL_SCALE, ballRestitution: 0.48, wallRestitution: 0.45,
   ballDamping: 0.998,
-  maxRollSpeed: 3.5, rollLimitDelayMs: 500, rollVerticalTolerance: 0.05, rollHorizontalTolerance: 0.01,
+  maxRollSpeed: 3, rollLimitDelayMs: 500, rollVerticalTolerance: 0.05, rollHorizontalTolerance: 0.01,
   maxBallSpeed: 10.5, serveY: 295, serveXSpeed: 2.5, serveYSpeed: -1.8,
   bootRadius: 8 * VISUAL_SCALE, bootOrbit: 27 * VISUAL_SCALE, bootRestAngle: 1.05,
   bootRaiseTicks: 8, bootLowerTicks: 8, bootTapTicks: 6, bootMotionTransfer: 0.55,
