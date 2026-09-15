@@ -15,7 +15,7 @@ export const RULES = {
   maxRollSpeed: 3, rollLimitDelayMs: 200, rollVerticalTolerance: 0.05, rollHorizontalTolerance: 0.01,
   maxBallSpeed: 10.5, serveY: 295, serveXSpeed: 2.5, serveYSpeed: -1.8,
   bootRadius: 8 * VISUAL_SCALE, bootOrbit: 27 * VISUAL_SCALE, bootRestAngle: 1.05,
-  bootMass: 2.4, bootRaiseTicks: 8, bootLowerTicks: 8, bootTapTicks: 6,
+  bootMass: 2.4, bootRaiseTicks: 16, bootLowerTicks: 16, bootTapTicks: 12,
   bootSpring: 0.34, bootSpringDamping: 0.16,
   bootWidth: 16 * VISUAL_SCALE, bootHeight: 18 * VISUAL_SCALE,
   goalWidth: REFERENCE_VISUALS.goal.width * VISUAL_SCALE,

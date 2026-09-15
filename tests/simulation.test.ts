@@ -331,7 +331,7 @@ test("una pulsación breve barre la pelota y una orden repetida no reinicia el g
   Matter.Body.setPosition(sim.ball, { x: 238, y: 575 });
   Matter.Body.setVelocity(sim.ball, { x: 0, y: 0 });
   sim.step(input, emptyInput());
-  for (let i = 0; i < 5; i++) sim.step(input, emptyInput());
+  for (let i = 0; i < 8; i++) sim.step(input, emptyInput());
   assert.ok(sim.ball.velocity.x > 5 && sim.ball.velocity.y < -2.5);
   const kickTick = sim.kicks[0];
   for (let i = 0; i < 24; i++) sim.step(input, emptyInput());
@@ -496,7 +496,7 @@ test("el pie describe una órbita, queda arriba y vuelve al reposo al soltar", (
         sim.step(team === 1 ? hold : idle, team === 2 ? hold : idle);
         const pose = bootPose(team, sim.feet[index].lift);
         assert.ok(Math.abs(Math.hypot(pose.x, pose.y) - RULES.bootOrbit) < 0.001);
-        if (i > 10) assert.equal(sim.feet[index].lift, 1);
+        if (sim.tick >= RULES.bootRaiseTicks) assert.equal(sim.feet[index].lift, 1);
         const bootDistance = Math.hypot(
           sim.boots[index].position.x - sim.players[index].position.x,
           sim.boots[index].position.y - sim.players[index].position.y,
@@ -506,7 +506,7 @@ test("el pie describe una órbita, queda arriba y vuelve al reposo al soltar", (
       }
       sim.step(idle, idle);
       assert.ok(sim.feet[index].lift < 1 && sim.feet[index].lift > 0);
-      for (let i = 0; i < 12; i++) sim.step(idle, idle);
+      for (let i = 0; i < RULES.bootLowerTicks + 2; i++) sim.step(idle, idle);
       assert.equal(sim.feet[index].lift, 0);
       // Un toque liberado a mitad del ascenso no completa una animación fija.
       sim.step(team === 1 ? { ...hold, kick: 2 } : idle, team === 2 ? { ...hold, kick: 2 } : idle);

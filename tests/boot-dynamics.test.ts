@@ -23,6 +23,32 @@ const angleDistance = (a: number, b: number) => {
   return Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
 };
 
+test("la patada sube gradualmente sin sacudida ni rebote angular grande", () => {
+  for (const team of [1, 2] as const) {
+    const sim = new Simulation();
+    try {
+      const index = team - 1, side = team === 1 ? -1 : 1;
+      const rest = bootPose(team, 0).angle;
+      const travel = Math.abs(bootPose(team, 1).angle - rest);
+      const hold = { ...emptyInput(), kick: 1, kickHeld: true };
+      const progress: number[] = [];
+      let peakSpin = 0;
+      for (let tick = 0; tick < 35; tick++) {
+        sim.step(team === 1 ? hold : emptyInput(), team === 2 ? hold : emptyInput());
+        const boot = sim.boots[index];
+        progress.push(side * (boot.angle - rest) / travel);
+        peakSpin = Math.max(peakSpin, Math.abs(boot.angularVelocity));
+      }
+      assert.ok(progress[7] < 0.65, `la bota ${team} sube demasiado rápido: ${progress[7]}`);
+      assert.ok(peakSpin < 0.25, `la bota ${team} gira bruscamente: ${peakSpin}`);
+      assert.ok(Math.max(...progress) < 1.15, `la bota ${team} rebota más allá de la patada: ${Math.max(...progress)}`);
+      assert.ok(progress[34] > 0.8, `la bota ${team} no llega a la posición levantada: ${progress[34]}`);
+    } finally {
+      sim.destroy();
+    }
+  }
+});
+
 const rotate = (point: { x: number; y: number }, angle: number) => ({
   x: point.x * Math.cos(angle) - point.y * Math.sin(angle),
   y: point.x * Math.sin(angle) + point.y * Math.cos(angle),
