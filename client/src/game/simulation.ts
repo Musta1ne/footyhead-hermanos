@@ -12,6 +12,7 @@ export const RULES = {
   // while preserving enough energy for visible rebounds and longer passes.
   playerRadius: 22 * VISUAL_SCALE, ballRadius: 10 * VISUAL_SCALE, ballRestitution: 0.48, wallRestitution: 0.45,
   ballDamping: 0.998,
+  maxRollSpeed: 3.5, rollLimitDelayMs: 500, rollVerticalTolerance: 0.05, rollHorizontalTolerance: 0.01,
   maxBallSpeed: 10.5, serveY: 295, serveXSpeed: 2.5, serveYSpeed: -1.8,
   bootRadius: 8 * VISUAL_SCALE, bootOrbit: 27 * VISUAL_SCALE, bootRestAngle: 1.05,
   bootRaiseTicks: 8, bootLowerTicks: 8, bootTapTicks: 6, bootMotionTransfer: 0.55,
@@ -33,7 +34,7 @@ export type Snapshot = {
   tick: number; round: number; pause: number; score: [number, number];
   match: number; remainingTicks: number; ready: [boolean, boolean];
   players: [BodyState, BodyState]; ball: BodyState;
-  inputs: [Input, Input]; kicks: [number, number]; feet: [FootState, FootState]; ballRotation: number;
+  inputs: [Input, Input]; kicks: [number, number]; feet: [FootState, FootState]; ballRotation: number; ballRollMs: number;
 };
 const { Engine, Bodies, Body, Composite, Query } = Matter;
 
@@ -77,6 +78,7 @@ export class Simulation {
     collisionFilter: { category: COLLISION.foot, mask: COLLISION.head | COLLISION.ball, group: player.collisionFilter.group },
   }));
   ballRotation = 0;
+  ballRollMs = 0;
   tick = 0;
   match = 0;
   remainingTicks = RULES.matchTicks;
@@ -133,6 +135,7 @@ export class Simulation {
     this.kicks = [-100, -100];
     this.feet = [{ lift: 0, tapTicks: 0 }, { lift: 0, tapTicks: 0 }];
     this.ballRotation = 0;
+    this.ballRollMs = 0;
     this.syncBoots();
     // No reutilizar contactos de la posición anterior después de un gol.
     this.resetCollisions();
@@ -314,9 +317,22 @@ export class Simulation {
     if (x < radius) contact(1, 0, radius - x, RULES.wallRestitution);
     if (x > 1024 - radius) contact(-1, 0, x - (1024 - radius), RULES.wallRestitution);
     if (y < radius) contact(0, 1, radius - y, RULES.wallRestitution);
-    if (y >= PITCH_FLOOR_Y - radius) {
+    const onFloor = y >= PITCH_FLOOR_Y - radius;
+    if (onFloor) {
       contact(0, -1, y - (PITCH_FLOOR_Y - radius), RULES.ballRestitution);
       if (Math.abs(vy) < RULES.ballGravity * dt) vy = 0;
+    }
+    const rolling = onFloor
+      && Math.abs(vy) <= RULES.rollVerticalTolerance
+      && Math.abs(vx) > RULES.rollHorizontalTolerance;
+    if (rolling) {
+      const elapsed = this.ballRollMs + RULES.stepMs * dt;
+      this.ballRollMs = elapsed >= RULES.rollLimitDelayMs - 0.000001 ? RULES.rollLimitDelayMs : elapsed;
+      if (this.ballRollMs >= RULES.rollLimitDelayMs && Math.abs(vx) > RULES.maxRollSpeed) {
+        vx = Math.sign(vx) * RULES.maxRollSpeed;
+      }
+    } else {
+      this.ballRollMs = 0;
     }
     Body.setPosition(this.ball, { x, y });
     Body.setVelocity(this.ball, { x: vx, y: vy });
@@ -329,7 +345,7 @@ export class Simulation {
       match: this.match, remainingTicks: this.remainingTicks, ready: [...this.ready],
       players: [body(this.players[0]), body(this.players[1])], ball: body(this.ball),
       inputs: [{ ...this.inputs[0] }, { ...this.inputs[1] }], kicks: [...this.kicks],
-      feet: [{ ...this.feet[0] }, { ...this.feet[1] }], ballRotation: this.ballRotation };
+      feet: [{ ...this.feet[0] }, { ...this.feet[1] }], ballRotation: this.ballRotation, ballRollMs: this.ballRollMs };
   }
 
   restore(state: Snapshot) {
@@ -345,6 +361,7 @@ export class Simulation {
     this.kicks = [...state.kicks];
     this.feet = [{ ...state.feet[0] }, { ...state.feet[1] }];
     this.ballRotation = state.ballRotation;
+    this.ballRollMs = state.ballRollMs;
     this.players.forEach((p, i) => body(p, state.players[i])); body(this.ball, state.ball);
     this.syncBoots();
     this.resetCollisions();

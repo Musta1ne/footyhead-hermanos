@@ -424,6 +424,62 @@ test("el pie describe una órbita, queda arriba y vuelve al reposo al soltar", (
   }
 });
 
+test("la pelota rápida se limita después de medio segundo de rodar", () => {
+  const sim = new Simulation();
+  try {
+    Matter.Body.setPosition(sim.ball, { x: 512, y: PITCH_FLOOR_Y - RULES.ballRadius });
+    Matter.Body.setVelocity(sim.ball, { x: 6, y: 0 });
+    for (let i = 0; i < 29; i++) sim.step(emptyInput(), emptyInput());
+    assert.ok(sim.ball.velocity.x > RULES.maxRollSpeed, "no debe frenarse antes de 500 ms");
+    sim.step(emptyInput(), emptyInput());
+    assert.equal(sim.ball.velocity.x, RULES.maxRollSpeed);
+    assert.equal(sim.ballRollMs, RULES.rollLimitDelayMs);
+  } finally { sim.destroy(); }
+});
+
+test("el límite de rodamiento no aumenta una pelota lenta", () => {
+  const sim = new Simulation();
+  try {
+    Matter.Body.setPosition(sim.ball, { x: 512, y: PITCH_FLOOR_Y - RULES.ballRadius });
+    Matter.Body.setVelocity(sim.ball, { x: 2, y: 0 });
+    for (let i = 0; i < 60; i++) sim.step(emptyInput(), emptyInput());
+    assert.ok(sim.ball.velocity.x > 0 && sim.ball.velocity.x < 2);
+    assert.equal(sim.ballRollMs, RULES.rollLimitDelayMs);
+  } finally { sim.destroy(); }
+});
+
+test("despegar o picar reinicia el tiempo continuo de rodamiento", () => {
+  const sim = new Simulation();
+  try {
+    Matter.Body.setPosition(sim.ball, { x: 512, y: PITCH_FLOOR_Y - RULES.ballRadius });
+    Matter.Body.setVelocity(sim.ball, { x: -6, y: 0 });
+    for (let i = 0; i < 29; i++) sim.step(emptyInput(), emptyInput());
+    assert.ok(sim.ballRollMs < RULES.rollLimitDelayMs);
+
+    Matter.Body.setPosition(sim.ball, { x: 512, y: PITCH_FLOOR_Y - RULES.ballRadius - 20 });
+    Matter.Body.setVelocity(sim.ball, { x: -6, y: -1 });
+    sim.step(emptyInput(), emptyInput());
+    assert.equal(sim.ballRollMs, 0);
+
+    Matter.Body.setPosition(sim.ball, { x: 512, y: PITCH_FLOOR_Y - RULES.ballRadius });
+    Matter.Body.setVelocity(sim.ball, { x: -6, y: 0 });
+    for (let i = 0; i < 10; i++) sim.step(emptyInput(), emptyInput());
+    assert.ok(sim.ballRollMs > 0);
+    Matter.Body.setPosition(sim.ball, { x: 512, y: PITCH_FLOOR_Y - RULES.ballRadius });
+    Matter.Body.setVelocity(sim.ball, { x: -6, y: 1 });
+    sim.step(emptyInput(), emptyInput());
+    assert.ok(sim.ball.velocity.y < -RULES.rollVerticalTolerance);
+    assert.equal(sim.ballRollMs, 0);
+
+    Matter.Body.setPosition(sim.ball, { x: 512, y: PITCH_FLOOR_Y - RULES.ballRadius });
+    Matter.Body.setVelocity(sim.ball, { x: -6, y: 0 });
+    for (let i = 0; i < 29; i++) sim.step(emptyInput(), emptyInput());
+    assert.ok(Math.abs(sim.ball.velocity.x) > RULES.maxRollSpeed, "debe esperar otros 500 ms completos");
+    sim.step(emptyInput(), emptyInput());
+    assert.equal(sim.ball.velocity.x, -RULES.maxRollSpeed);
+  } finally { sim.destroy(); }
+});
+
 test("al soltar la patada, el botín no arrastra la pelota detrás del jugador", () => {
   for (const team of [1, 2] as const) {
     const sim = new Simulation();

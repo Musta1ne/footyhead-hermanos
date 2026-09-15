@@ -33,7 +33,9 @@ Cada entrada tiene `seq`. Se ignoran entradas y estados anteriores a los ya reci
 hasta soltar la tecla. `feet` guarda la elevación y el toque breve de cada pie;
 sus cuerpos cinemáticos se reconstruyen al restaurar la predicción. Dibujo y
 contacto comparten `bootPose(team, lift)`. `ballRotation` es el giro visual del
-balón, separado de su colisión. Las medidas y aproximaciones están en
+balón, separado de su colisión. `ballRollMs` conserva el tiempo que lleva
+rodando apoyado y permite aplicar el tope horizontal después de 500 ms sin que
+una corrección de red reinicie el contador. Las medidas y aproximaciones están en
 [PHYSICS.md](PHYSICS.md).
 
 ## Qué era hardcodeado y qué sigue siendo una regla

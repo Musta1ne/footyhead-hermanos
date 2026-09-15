@@ -67,11 +67,17 @@ eleva suavemente a (+/-6,8, -4,4), todavia por debajo de la referencia original.
 | Restitucion de bota | 0,6 | 0,45 | Pie levantado bloquea sin catapultar |
 | Restitucion de paredes/postes | 1 | 0,45 | Dejan de ser trampolines |
 | Damping de la pelota | ninguno | 0,998 por paso | Vuelo y rodadura conservan mejor el impulso horizontal |
+| Tope tras rodar 500 ms | ninguno | 3,5 px/paso | El jugador, que corre a 3,75 px/paso, puede alcanzar una pelota rápida en el piso |
 
 El damping se aplica en cada subpaso como `0,998^(1/3)`, equivalente a 0,998
 por tick de 60 Hz. No se aplica friccion tangencial artificial en contactos:
 la pelota sigue pudiendo rodar y las patadas siguen respondiendo al primer
 paso.
+
+Cuando la pelota permanece apoyada, con velocidad vertical de hasta 0,05
+px/paso, el simulador acumula tiempo de rodamiento. Al completar 500 ms limita
+solo la magnitud horizontal que exceda 3,5 px/paso; una pelota mas lenta nunca
+se acelera. Despegar, rebotar o detenerse reinicia el contador.
 
 ## Contactos de la pelota y proporciones del pie
 
@@ -121,8 +127,9 @@ otro jugador.
 
 La fisica de la pelota es explicita, pero esto no convierte todo el juego en un
 lockstep determinista entre maquinas. Se conserva el anfitrion autoritativo,
-la prediccion y la restauracion de snapshots. El formato de estado no cambia:
-`feet`, `kicks` y los inputs restauran tambien la ventana activa de patada.
+la prediccion y la restauracion de snapshots. `feet`, `kicks`, los inputs y
+`ballRollMs` restauran tambien la ventana activa de patada y el tiempo continuo
+de rodamiento.
 Ambos jugadores deben recargar la version nueva antes de jugar juntos.
 
 ## Comprobacion

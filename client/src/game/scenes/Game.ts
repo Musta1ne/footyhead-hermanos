@@ -246,6 +246,7 @@ function isSnapshot(value: unknown): value is Snapshot {
     && Number.isSafeInteger(v.remainingTicks) && v.remainingTicks >= 0 && v.remainingTicks <= RULES.matchTicks
     && Array.isArray(v.ready) && v.ready.length === 2 && v.ready.every(b => typeof b === "boolean")
     && numbers(v.score) && numbers(v.kicks) && Number.isFinite(v.ballRotation)
+    && Number.isFinite(v.ballRollMs) && v.ballRollMs >= 0 && v.ballRollMs <= RULES.rollLimitDelayMs
     && Array.isArray(v.feet) && v.feet.length === 2 && v.feet.every(foot)
     && Array.isArray(v.inputs) && v.inputs.length === 2 && v.inputs.every(isInput)
     && Array.isArray(v.players) && v.players.length === 2 && v.players.every(body) && body(v.ball);
