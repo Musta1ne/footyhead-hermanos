@@ -1,5 +1,5 @@
 import { Scene } from "phaser";
-import { PITCH_FLOOR_Y, REFERENCE_VISUALS, VISUALS } from "../visual-proportions";
+import { PITCH_FLOOR_Y, REFERENCE_VISUALS, STADIUM_CORNERS, VISUALS } from "../visual-proportions";
 
 export const ARCADE_FONT = "Impact, Arial Black, sans-serif";
 
@@ -63,8 +63,8 @@ export function drawStadium(scene: Scene) {
   g.fillStyle(0x15281b, 0.65).fillRect(0, 692, 1024, 76);
 
   // Black corner scoreboards echo the classic Sports Heads frame.
-  g.fillStyle(0x17211d).fillPoints([{ x: 0, y: 0 }, { x: 306, y: 0 }, { x: 159, y: 33 }, { x: 33, y: 144 }, { x: 0, y: 310 }], true);
-  g.fillPoints([{ x: 1024, y: 0 }, { x: 718, y: 0 }, { x: 865, y: 33 }, { x: 991, y: 144 }, { x: 1024, y: 310 }], true);
+  g.fillStyle(0x17211d).fillPoints([...STADIUM_CORNERS.left], true);
+  g.fillPoints([...STADIUM_CORNERS.right], true);
   g.lineStyle(5, 0x7a8c79, 0.7).lineBetween(0, 2, 306, 2).lineBetween(718, 2, 1024, 2);
   scene.add.text(18, 16, "IZQUIERDA", { fontFamily: ARCADE_FONT, fontSize: 25, color: "#ff6549" });
   scene.add.text(1006, 16, "DERECHA", { fontFamily: ARCADE_FONT, fontSize: 25, color: "#ff6549" }).setOrigin(1, 0);

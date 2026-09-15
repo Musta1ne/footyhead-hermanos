@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import Matter from "../client/node_modules/matter-js/build/matter.js";
 import { Simulation, bootPose, circleBox, emptyInput, RULES, isInput } from "../client/src/game/simulation";
-import { PITCH_FLOOR_Y, VISUAL_SCALE } from "../client/src/game/visual-proportions";
+import { ARENA_SLOPES, PITCH_FLOOR_Y, VISUAL_SCALE } from "../client/src/game/visual-proportions";
 
 test("la pelota tiene una salida contenida y pierde velocidad entre contactos", () => {
   const sim = new Simulation();
@@ -421,6 +421,59 @@ test("el pie describe una órbita, queda arriba y vuelve al reposo al soltar", (
       sim.step(idle, idle);
       assert.ok(sim.feet[index].lift < partial);
     } finally { sim.destroy(); }
+  }
+});
+
+test("al soltar la patada, el botín no arrastra la pelota detrás del jugador", () => {
+  for (const team of [1, 2] as const) {
+    const sim = new Simulation();
+    try {
+      const idle = emptyInput(), hold = { ...idle, kick: 1, kickHeld: true };
+      const inputs = team === 1 ? [hold, idle] as const : [idle, hold] as const;
+      for (let i = 0; i < 30; i++) sim.step(...inputs);
+
+      const index = team - 1, side = team === 1 ? 1 : -1;
+      const player = sim.players[index], raised = bootPose(team, 1);
+      Matter.Body.setPosition(sim.ball, {
+        // El rival la deja apenas detrás del centro del botín levantado.
+        x: player.position.x + raised.x - side * 12,
+        y: PITCH_FLOOR_Y - RULES.ballRadius,
+      });
+      Matter.Body.setVelocity(sim.ball, { x: 0, y: 0 });
+
+      const release = { ...hold, kickHeld: false };
+      for (let i = 0; i < RULES.bootLowerTicks + 4; i++) {
+        sim.step(...(team === 1 ? [release, idle] as const : [idle, release] as const));
+      }
+
+      assert.ok(
+        (sim.ball.position.x - player.position.x) * side >= RULES.playerRadius,
+        `la pelota terminó detrás del frente del jugador ${team}: x=${sim.ball.position.x}`,
+      );
+    } finally {
+      sim.destroy();
+    }
+  }
+});
+
+test("la pelota rebota contra las pendientes superiores del estadio", () => {
+  for (const [start, end] of ARENA_SLOPES) {
+    const sim = new Simulation();
+    try {
+      const sx = end.x - start.x, sy = end.y - start.y;
+      const length = Math.hypot(sx, sy);
+      const normal = { x: sy / length, y: -sx / length };
+      Matter.Body.setPosition(sim.ball, {
+        x: (start.x + end.x) / 2 + normal.x * (RULES.ballRadius + 1),
+        y: (start.y + end.y) / 2 + normal.y * (RULES.ballRadius + 1),
+      });
+      Matter.Body.setVelocity(sim.ball, { x: -normal.x * 6, y: -normal.y * 6 });
+      sim.step(emptyInput(), emptyInput());
+      const outgoing = sim.ball.velocity.x * normal.x + sim.ball.velocity.y * normal.y;
+      assert.ok(outgoing > 2.5, `la pendiente debe devolver la pelota hacia la cancha: ${outgoing}`);
+    } finally {
+      sim.destroy();
+    }
   }
 });
 

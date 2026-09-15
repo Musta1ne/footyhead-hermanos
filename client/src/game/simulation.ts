@@ -1,5 +1,5 @@
 import Matter from "matter-js";
-import { PITCH_FLOOR_Y, REFERENCE_VISUALS, VISUAL_SCALE } from "./visual-proportions";
+import { ARENA_SLOPES, PITCH_FLOOR_Y, REFERENCE_VISUALS, VISUAL_SCALE } from "./visual-proportions";
 
 // Única definición de las reglas: anfitrión y predicción usan la misma física.
 export const RULES = {
@@ -200,8 +200,22 @@ export class Simulation {
     const team = i === 0 ? 1 : 2, foot = this.feet[i], player = this.players[i];
     const previous = bootPose(team, foot.lift);
     const rate = 1 / ((raised ? RULES.bootRaiseTicks : RULES.bootLowerTicks) * RULES.substeps);
-    foot.lift = Math.max(0, Math.min(1, foot.lift + (raised ? rate : -rate)));
-    const pose = bootPose(team, foot.lift), boot = this.boots[i];
+    const nextLift = Math.max(0, Math.min(1, foot.lift + (raised ? rate : -rate)));
+    let pose = bootPose(team, nextLift);
+    if (!raised && nextLift < foot.lift) {
+      const hit = circleBox(
+        this.ball.position.x - player.position.x - pose.x,
+        this.ball.position.y - player.position.y - pose.y,
+        RULES.ballRadius,
+        RULES.bootWidth / 2,
+        RULES.bootHeight / 2,
+      );
+      if (hit) pose = previous;
+      else foot.lift = nextLift;
+    } else {
+      foot.lift = nextLift;
+    }
+    const boot = this.boots[i];
     // En reposo queda recogida contra el cuerpo: no debe empujar el apoyo
     // bajo la cabeza al aterrizar sobre otro jugador.
     boot.collisionFilter.mask = foot.lift > 0.5 ? COLLISION.head : 0;
@@ -287,6 +301,15 @@ export class Simulation {
       const cos = Math.cos(angle), sin = Math.sin(angle), dx = x - cx, dy = y - RULES.goalTop;
       const hit = circleBox(dx * cos + dy * sin, -dx * sin + dy * cos, radius, RULES.goalWidth / 2, 2.5 * VISUAL_SCALE);
       if (hit) contact(hit.nx * cos - hit.ny * sin, hit.nx * sin + hit.ny * cos, hit.depth, RULES.wallRestitution);
+    }
+    for (const [start, end] of ARENA_SLOPES) {
+      const sx = end.x - start.x, sy = end.y - start.y;
+      const length = Math.hypot(sx, sy);
+      const along = ((x - start.x) * sx + (y - start.y) * sy) / (length * length);
+      if (along < 0 || along > 1) continue;
+      const nx = sy / length, ny = -sx / length;
+      const distance = (x - start.x) * nx + (y - start.y) * ny;
+      if (distance < radius) contact(nx, ny, radius - distance, RULES.wallRestitution);
     }
     if (x < radius) contact(1, 0, radius - x, RULES.wallRestitution);
     if (x > 1024 - radius) contact(-1, 0, x - (1024 - radius), RULES.wallRestitution);

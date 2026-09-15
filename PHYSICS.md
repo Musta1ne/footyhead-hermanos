@@ -98,11 +98,17 @@ paso.
 - Fuera de esa ventana, el pie rebota con restitucion 0,45 segun la normal de
   contacto. Sobre una cara horizontal invierte vy; sobre una cara lateral
   invierte vx, evitando que la pelota atraviese el costado de la bota.
+- Al bajar, la bota prueba primero su siguiente posicion. Si esa pose invade la
+  pelota, el descenso queda bloqueado hasta que el contacto se libera; asi no la
+  arrastra por debajo de la cabeza ni la expulsa detras del jugador.
 - Suelo en y=590, restitucion 0,48; paredes, techo y travesanos con
   restitucion 0,45. Los travesanos conservan sus cajas inclinadas +/-0,05 rad.
   Solo se rebota si la pelota se acerca; siempre se corrige la penetracion.
   Los rebotes minimos se estabilizan en el piso sin consumir velocidad
   horizontal de forma artificial.
+- Las seis pendientes que delimitan los marcadores negros superiores comparten
+  vertices con el dibujo del estadio y usan la restitucion de pared. Sus
+  normales apuntan hacia la cancha para devolver la pelota segun cada angulo.
 - Limite de velocidad de 10,5 px/paso: el maximo desplazamiento por subpaso es
   3,5 unidades, inferior al radio de la pelota.
 
@@ -126,7 +132,9 @@ restauracion, alcance compacto, patadas simetricas, rodadura amortiguada y
 perdida de altura. Tambien verifica limites de velocidad, restitucion y
 damping, circulo/AABB con centro interior, separacion sin NaN, restitucion de
 cabeza sin empujar al jugador y contactos a velocidad maxima contra cabeza,
-bota y travesano.
+bota y travesano. Las regresiones de colision comprueban ademas que bajar el
+botin no arrastre la pelota detras de ninguno de los jugadores y que las seis
+pendientes superiores la hagan rebotar hacia la cancha.
 
 Ejecutar `npm test` y `npm run build` antes de publicar. La equivalencia de
 sensaciones con el original requiere comparacion jugando; las capturas no
