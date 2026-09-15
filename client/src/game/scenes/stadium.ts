@@ -1,10 +1,11 @@
 import { Scene } from "phaser";
 import { PITCH_FLOOR_Y, REFERENCE_VISUALS, STADIUM_CORNERS, VISUALS } from "../visual-proportions";
+import type { MatchMode } from "../match-mode";
 
 export const ARCADE_FONT = "Impact, Arial Black, sans-serif";
 
 /** Decorative scenery only. Goal posts and turf align with Simulation's existing bodies. */
-export function drawStadium(scene: Scene) {
+export function drawStadium(scene: Scene, mode: MatchMode) {
   const g = scene.add.graphics();
   g.fillGradientStyle(0x85bfd0, 0x85bfd0, 0xc1ded4, 0xc1ded4);
   g.fillRect(0, 0, 1024, 590);
@@ -73,8 +74,13 @@ export function drawStadium(scene: Scene) {
   scene.add.text(22, 652, "ESPACIO  ·  PATEAR", { fontFamily: ARCADE_FONT, fontSize: 20, color: "#f6f3da" });
   scene.add.text(511, 627, "FOOTY HEAD", { fontFamily: ARCADE_FONT, fontSize: 26, color: "#fff5da", stroke: "#233021", strokeThickness: 4 }).setOrigin(0.5);
   scene.add.text(511, 657, "HERMANOS", { fontFamily: ARCADE_FONT, fontSize: 29, color: "#ffe52b", stroke: "#233021", strokeThickness: 4 }).setOrigin(0.5);
-  scene.add.text(860, 632, "1 MINUTO", { fontFamily: ARCADE_FONT, fontSize: 25, color: "#f6f3da" }).setOrigin(0.5);
-  scene.add.text(860, 661, "EL CLÁSICO · 1 VS 1", { fontFamily: ARCADE_FONT, fontSize: 18, color: "#e1e8c9" }).setOrigin(0.5);
+  const modeCopy = {
+    timed: ["TIMED", "1 MINUTO · GOL DE ORO"],
+    "first-to-seven": ["FIRST TO SEVEN", "PRIMERO EN MARCAR 7"],
+    practice: ["PRACTICE", "SIN RELOJ NI LÍMITE"],
+  }[mode];
+  scene.add.text(860, 632, modeCopy[0], { fontFamily: ARCADE_FONT, fontSize: 25, color: "#f6f3da" }).setOrigin(0.5);
+  scene.add.text(860, 661, modeCopy[1], { fontFamily: ARCADE_FONT, fontSize: 18, color: "#e1e8c9" }).setOrigin(0.5);
 }
 
 export function drawGoal(scene: Scene, right: boolean) {

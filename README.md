@@ -6,7 +6,7 @@ Adaptación de [azaidi4/footyhead](https://github.com/azaidi4/footyhead). Conser
 
 Abrí [Footy Head online](https://footyhead-hermanos-agustin.agustinmacello.chatgpt.site).
 
-1. Elegí **Jugar online**, seleccioná **Con tiempo**, **First to seven** o **Practice** y creá la sala. Con tiempo dura un minuto y, al llegar a cero, el próximo gol gana. First to seven termina al llegar a siete goles; Practice sigue sin reloj ni límite de goles.
+1. Elegí **Jugar online**, seleccioná **Timed**, **First to seven** o **Practice** y creá la sala. Timed dura un minuto y, al llegar a cero, el próximo gol gana. First to seven termina al llegar a siete goles; Practice sigue sin reloj ni límite de goles.
 2. Copiá el enlace y compartilo con otra persona.
 3. Tocá **Entrar a jugar** con el mismo navegador donde creaste la sala. Sos el jugador izquierdo y tu navegador lleva la partida. Se conserva tu lugar aunque abras el enlace en otra pestaña; sólo puede haber una pestaña activa de esa sala.
 4. La persona invitada abre el enlace en su computadora y juega a la derecha. La partida comienza al conectarse.

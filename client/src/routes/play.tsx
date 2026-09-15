@@ -6,7 +6,7 @@ import type { MatchMode } from "../game/match-mode";
 
 const prettyPrint = (str: string) => `${str.slice(0, 5)}-${str.slice(5)}`;
 const modes: { id: MatchMode; title: string; description: string }[] = [
-  { id: "timed", title: "Con tiempo", description: "1 minuto · Al llegar a 0, el próximo gol gana" },
+  { id: "timed", title: "Timed", description: "1 minuto · Al llegar a 0, el próximo gol gana" },
   { id: "first-to-seven", title: "First to seven", description: "El primero en marcar 7 goles gana" },
   { id: "practice", title: "Practice", description: "Juego libre, sin reloj ni límite de goles" },
 ];

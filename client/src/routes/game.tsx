@@ -41,7 +41,7 @@ export function Game() {
         <p className="game-controls-hint" aria-label="Controles de la partida">{controls}</p>
         <footer className="game-room-strip">
           <span>SALA <strong>{pin}</strong></span>
-          <span>{mode === "timed" ? "CON TIEMPO" : mode === "first-to-seven" ? "FIRST TO SEVEN" : "PRACTICE"}</span>
+          <span>{mode === "timed" ? "TIMED" : mode === "first-to-seven" ? "FIRST TO SEVEN" : "PRACTICE"}</span>
           <span>La partida se pausa si alguno cambia de pestaña.</span>
         </footer>
       </div>

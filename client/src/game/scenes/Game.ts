@@ -2,7 +2,7 @@ import Phaser, { Scene } from "phaser";
 import { Peer } from "../peer";
 import { ARCADE_FONT, drawGoal, drawStadium } from "./stadium";
 import { Simulation, RULES, emptyInput, isInput, type Input, type Snapshot } from "../simulation";
-import { controlHint, controlKeyCode, getControlBindings, type ControlBindings } from "../control-bindings";
+import { controlKeyCode, getControlBindings, type ControlBindings } from "../control-bindings";
 import { VISUALS } from "../visual-proportions";
 import { isMatchMode, type MatchMode } from "../match-mode";
 
@@ -13,7 +13,6 @@ export class Game extends Scene {
   private peer: Peer;
   private keys: Record<"left" | "right" | "jump" | "kick", Phaser.Input.Keyboard.Key>;
   private bindings: ControlBindings;
-  private controlsHint: string;
   private heads: Phaser.GameObjects.Image[];
   private boots: Phaser.GameObjects.Image[];
   private ball: Phaser.GameObjects.Image;
@@ -48,14 +47,13 @@ export class Game extends Scene {
   create() {
     this.sim = new Simulation(this.mode);
     this.bindings = getControlBindings();
-    this.controlsHint = controlHint(this.bindings);
     this.keys = {
       left: this.input.keyboard!.addKey(controlKeyCode(this.bindings.left)!),
       right: this.input.keyboard!.addKey(controlKeyCode(this.bindings.right)!),
       jump: this.input.keyboard!.addKey(controlKeyCode(this.bindings.jump)!),
       kick: this.input.keyboard!.addKey(controlKeyCode(this.bindings.kick)!),
     };
-    drawStadium(this);
+    drawStadium(this, this.mode);
     drawGoal(this, false);
     drawGoal(this, true);
     this.heads = [1, 2].map(team => this.add.image(0, 0, `sprite-${team}`).setDisplaySize(VISUALS.player.width, VISUALS.player.height).setFlipX(team === 2));
@@ -81,13 +79,13 @@ export class Game extends Scene {
     this.status = this.add.text(512, 115, "Preparando conexión…", { fontFamily: "Arial", fontSize: "20px", color: "#23472d", backgroundColor: "#e7edda", padding: { x: 16, y: 10 }, align: "center", wordWrap: { width: 680 } }).setOrigin(0.5);
     this.pingText = this.add.text(512, 712, "Esperando al otro jugador…", { fontFamily: "Arial", fontSize: "16px", color: "#eef0da" }).setOrigin(0.5);
     this.networkText = this.add.text(512, 742, "", { fontFamily: "Arial", fontSize: "14px", color: "#ffe6a2", align: "center", wordWrap: { width: 960 } }).setOrigin(0.5);
-    this.peer = new Peer(this.pin, text => this.status.setText(text), text => {
-      this.started = false; this.releaseControls(this.local); this.status.setText(text);
+    this.peer = new Peer(this.pin, text => this.status.setText(text).setVisible(true), text => {
+      this.started = false; this.releaseControls(this.local); this.status.setText(text).setVisible(true);
       this.replayButton.setVisible(false);
       this.replayPanel.setVisible(false);
     });
     this.peer.onReady = () => {
-      this.status.setText(this.controlsHint);
+      this.status.setVisible(false);
       this.peer.send({ type: "visibility", hidden: document.hidden }, true);
       if (this.peer.host) {
         this.started = true;
@@ -151,7 +149,8 @@ export class Game extends Scene {
     const paused = document.hidden || this.remoteHidden;
     if (this.peer.ready && this.started) {
       const result = `Ganó el jugador ${this.sim.winner === 1 ? "izquierdo" : "derecho"}`;
-      this.status.setText(this.confirmedFinished ? `¡Terminó el partido! ${result}` : paused ? "Partida pausada: los dos deben volver a la pestaña del juego." : this.sim.goldenGoal ? "¡Gol de oro! El próximo gol gana." : this.controlsHint);
+      const message = this.confirmedFinished ? `¡Terminó el partido! ${result}` : paused ? "Partida pausada: los dos deben volver a la pestaña del juego." : this.sim.goldenGoal ? "¡Gol de oro! El próximo gol gana." : "";
+      this.status.setText(message).setVisible(Boolean(message));
       this.pingText.setText(`Conexión ${this.peer.route}: ${this.peer.rtt ? Math.round(this.peer.rtt) + " ms" : "midiendo…"} · Jugás a la ${this.peer.host ? "izquierda" : "derecha"}`);
       this.networkText.setText(this.peer.route === "por servidor"
         ? `Respaldo HTTPS: puede tener mucha demora. ${this.peer.networkNote || "WebRTC no logró conectar."}`
