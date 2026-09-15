@@ -4,6 +4,7 @@ import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
 export const rooms = sqliteTable("rooms", {
   pin: text("pin").primaryKey(),
   host: text("host").notNull(),
+  mode: text("mode").notNull().default("timed"),
   guest: text("guest"),
   offer: text("offer"),
   answer: text("answer"),

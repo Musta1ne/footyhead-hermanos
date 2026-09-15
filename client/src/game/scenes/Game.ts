@@ -4,9 +4,11 @@ import { ARCADE_FONT, drawGoal, drawStadium } from "./stadium";
 import { Simulation, RULES, emptyInput, isInput, type Input, type Snapshot } from "../simulation";
 import { controlHint, controlKeyCode, getControlBindings, type ControlBindings } from "../control-bindings";
 import { VISUALS } from "../visual-proportions";
+import { isMatchMode, type MatchMode } from "../match-mode";
 
 export class Game extends Scene {
   private pin = "";
+  private mode: MatchMode = "timed";
   private sim: Simulation;
   private peer: Peer;
   private keys: Record<"left" | "right" | "jump" | "kick", Phaser.Input.Keyboard.Key>;
@@ -38,10 +40,13 @@ export class Game extends Scene {
   private corrections = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }];
 
   constructor() { super("Game"); }
-  init(data: { pin: string }) { this.pin = data.pin.replaceAll("-", "").toUpperCase(); }
+  init(data: { pin: string; mode: MatchMode }) {
+    this.pin = data.pin.replaceAll("-", "").toUpperCase();
+    this.mode = isMatchMode(data.mode) ? data.mode : "timed";
+  }
 
   create() {
-    this.sim = new Simulation();
+    this.sim = new Simulation(this.mode);
     this.bindings = getControlBindings();
     this.controlsHint = controlHint(this.bindings);
     this.keys = {
@@ -124,7 +129,7 @@ export class Game extends Scene {
       this.lastSnapshot = state.tick;
       const newMatch = state.match !== this.sim.match;
       if (newMatch) this.resetMatchControls();
-      this.confirmedFinished = state.remainingTicks === 0;
+      this.confirmedFinished = state.winner !== null;
       const old = [...this.sim.players, this.sim.ball].map(body => ({ ...body.position }));
       const reset = newMatch || state.round !== this.confirmedRound || !this.started || (this.sim.pause > 0 && state.pause === 0);
       if (state.round > this.confirmedRound) this.sound.play("die");
@@ -145,8 +150,8 @@ export class Game extends Scene {
     if (!this.sim || !this.peer) return;
     const paused = document.hidden || this.remoteHidden;
     if (this.peer.ready && this.started) {
-      const result = this.sim.winner === null ? "Empate" : `Ganó el jugador ${this.sim.winner === 1 ? "izquierdo" : "derecho"}`;
-      this.status.setText(this.confirmedFinished ? `¡Terminó el partido! ${result}` : paused ? "Partida pausada: los dos deben volver a la pestaña del juego." : this.controlsHint);
+      const result = `Ganó el jugador ${this.sim.winner === 1 ? "izquierdo" : "derecho"}`;
+      this.status.setText(this.confirmedFinished ? `¡Terminó el partido! ${result}` : paused ? "Partida pausada: los dos deben volver a la pestaña del juego." : this.sim.goldenGoal ? "¡Gol de oro! El próximo gol gana." : this.controlsHint);
       this.pingText.setText(`Conexión ${this.peer.route}: ${this.peer.rtt ? Math.round(this.peer.rtt) + " ms" : "midiendo…"} · Jugás a la ${this.peer.host ? "izquierda" : "derecha"}`);
       this.networkText.setText(this.peer.route === "por servidor"
         ? `Respaldo HTTPS: puede tener mucha demora. ${this.peer.networkNote || "WebRTC no logró conectar."}`
@@ -154,13 +159,13 @@ export class Game extends Scene {
     }
     this.scoreText.setText(this.confirmedScore.join(" : "));
     const seconds = Math.ceil(this.sim.remainingTicks / 60);
-    this.clockText.setText(`${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`);
+    this.clockText.setText(this.mode === "practice" ? "PRACTICE · ∞" : this.mode === "first-to-seven" ? "FIRST TO 7" : this.sim.goldenGoal ? "GOL DE ORO" : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`);
     this.replayButton.setVisible(this.confirmedFinished && this.peer.ready);
     this.replayPanel.setVisible(this.confirmedFinished && this.peer.ready);
     this.cornerScores.forEach((text, i) => text.setText(String(this.confirmedScore[i])));
     this.goalText.setVisible(this.started && (this.sim.pause > 0 || this.confirmedFinished));
     this.goalText.setText(this.confirmedFinished ? "¡FINAL DEL PARTIDO!" : "¡GOL!");
-    this.clockText.setColor(seconds <= 10 ? "#a62e21" : "#245e27");
+    this.clockText.setColor(this.mode === "timed" && seconds <= 10 ? "#a62e21" : "#245e27");
     const ready = this.sim.ready[this.peer.host ? 0 : 1];
     this.replayButton.setText(ready ? "Esperando al otro jugador…" : this.sim.ready.some(Boolean) ? "Tu rival quiere revancha · Jugar otra vez" : "Jugar otra vez");
     this.replayButton.setAlpha(ready ? 0.7 : 1);
@@ -247,6 +252,7 @@ function isSnapshot(value: unknown): value is Snapshot {
   const boots = (v as Snapshot).boots;
   return Number.isSafeInteger(v.tick) && v.tick >= 0 && Number.isSafeInteger(v.round) && Number.isSafeInteger(v.pause)
     && Number.isSafeInteger(v.match) && v.match >= 0
+    && isMatchMode(v.mode) && (v.winner === null || v.winner === 1 || v.winner === 2)
     && Number.isSafeInteger(v.remainingTicks) && v.remainingTicks >= 0 && v.remainingTicks <= RULES.matchTicks
     && Array.isArray(v.ready) && v.ready.length === 2 && v.ready.every(b => typeof b === "boolean")
     && numbers(v.score) && numbers(v.kicks) && Number.isFinite(v.ballRotation)

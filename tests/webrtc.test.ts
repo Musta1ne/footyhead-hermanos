@@ -90,6 +90,8 @@ test("dos Peer reales abren ambos canales y juegan aunque se apague la señaliza
       for (let match = 0; match < 2; match++) {
         hostSim.remainingTicks = 1;
         hostSim.score = [match + 1, 0];
+        hostSim.ball.position.x = 984;
+        hostSim.ball.position.y = 530;
         hostSim.step(emptyInput(), emptyInput());
         const ended = new Promise<void>(resolve => {
           guest.onMessage = message => { guestSim.restore(message.state as Snapshot); resolve(); };

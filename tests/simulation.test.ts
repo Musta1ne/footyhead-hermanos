@@ -247,7 +247,7 @@ test("dos pies levantados también se bloquean entre sí", () => {
   } finally { sim.destroy(); }
 });
 
-test("el minuto incluye las pausas de gol y congela el resultado al terminar", () => {
+test("el minuto incluye las pausas y al llegar a cero activa el gol de oro", () => {
   const sim = new Simulation();
   try {
     const input = emptyInput();
@@ -257,15 +257,20 @@ test("el minuto incluye las pausas de gol y congela el resultado al terminar", (
     assert.equal(sim.finished, false);
     assert.equal(sim.remainingTicks, 1);
     sim.step(input, input);
-    assert.equal(sim.finished, true);
-    assert.equal(sim.winner, 1);
+    assert.equal(sim.remainingTicks, 0);
+    assert.equal(sim.goldenGoal, true);
+    assert.equal(sim.finished, false);
+    sim.pause = 0;
+    Matter.Body.setPosition(sim.ball, { x: 40, y: 530 });
+    sim.step(input, input);
+    assert.equal(sim.winner, 2, "el gol de oro decide aunque el rival llevara ventaja");
     const final = sim.snapshot();
     for (let i = 0; i < 120; i++) sim.step({ ...input, direction: 1, kick: 1 }, input);
     assert.deepEqual(sim.snapshot(), final);
   } finally { sim.destroy(); }
 });
 
-test("resultado empatado o victoria derecha y último gol dentro del tiempo", () => {
+test("un gol en el último paso del tiempo decide la partida", () => {
   const sim = new Simulation();
   try {
     sim.remainingTicks = 1;
@@ -274,8 +279,7 @@ test("resultado empatado o victoria derecha y último gol dentro del tiempo", ()
     sim.step(emptyInput(), emptyInput());
     assert.equal(sim.winner, 2);
     assert.deepEqual(sim.score, [0, 1]);
-    sim.score = [1, 1];
-    assert.equal(sim.winner, null);
+    assert.equal(sim.finished, true);
   } finally { sim.destroy(); }
 });
 
@@ -284,7 +288,8 @@ test("revancha requiere ambos jugadores, ignora duplicados y sincroniza varios p
   try {
     assert.equal(host.requestRematch(1, 0), false);
     for (let match = 0; match < 3; match++) {
-      host.remainingTicks = 1; host.pause = 2; host.score = [3, 2];
+      host.remainingTicks = 1; host.pause = 0; host.score = [3, 2];
+      Matter.Body.setPosition(host.ball, { x: 984, y: 530 });
       host.step(emptyInput(), emptyInput());
       const endTick = host.tick;
       const first = match % 2 ? 2 : 1;
@@ -515,6 +520,46 @@ test("el pie describe una órbita, queda arriba y vuelve al reposo al soltar", (
       assert.ok(sim.feet[index].lift < partial);
     } finally { sim.destroy(); }
   }
+});
+
+test("First to seven termina exactamente con el séptimo gol y conserva la regla en el estado", () => {
+  const host = new Simulation("first-to-seven"), guest = new Simulation("first-to-seven");
+  try {
+    for (let goal = 1; goal <= 7; goal++) {
+      host.pause = 0;
+      Matter.Body.setPosition(host.ball, { x: 984, y: 530 });
+      host.step(emptyInput(), emptyInput());
+      assert.equal(host.score[0], goal);
+      assert.equal(host.finished, goal === 7);
+      assert.equal(host.remainingTicks, 0);
+    }
+    guest.restore(host.snapshot());
+    assert.deepEqual(guest.snapshot(), host.snapshot());
+    assert.equal(host.requestRematch(1, 0), true);
+    assert.equal(host.requestRematch(2, 0), true);
+    assert.equal(host.winner, null);
+    assert.equal(host.remainingTicks, 0);
+    assert.deepEqual(host.score, [0, 0]);
+  } finally { host.destroy(); guest.destroy(); }
+});
+
+test("Practice permite seguir jugando sin reloj ni límite de goles", () => {
+  const sim = new Simulation("practice");
+  try {
+    for (let goal = 0; goal < 9; goal++) {
+      sim.pause = 0;
+      Matter.Body.setPosition(sim.ball, { x: goal % 2 ? 40 : 984, y: 530 });
+      sim.step(emptyInput(), emptyInput());
+    }
+    assert.deepEqual(sim.score, [5, 4]);
+    assert.equal(sim.remainingTicks, 0);
+    assert.equal(sim.finished, false);
+    assert.equal(sim.requestRematch(1, 0), false);
+    sim.pause = 0;
+    for (let i = 0; i < RULES.matchTicks + 1; i++) sim.step(emptyInput(), emptyInput());
+    assert.equal(sim.finished, false);
+    assert.equal(sim.remainingTicks, 0);
+  } finally { sim.destroy(); }
 });
 
 test("la pelota rápida se limita después de 200 ms de rodar", () => {

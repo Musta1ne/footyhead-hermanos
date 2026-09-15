@@ -1,5 +1,6 @@
 import { Rooms } from "./rooms";
 import { iceConfig, type IceEnv } from "./ice";
+import { isMatchMode } from "../client/src/game/match-mode";
 export type Env = { DB: D1Database; ASSETS: Fetcher } & IceEnv;
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 const token = () => crypto.randomUUID().replaceAll("-", "");
@@ -28,10 +29,19 @@ export default {
       if (request.headers.has("Origin") && request.headers.get("Origin") !== url.origin) return json({ message: "Origen no permitido." }, 403);
       const store = new Rooms(env.DB);
       if (url.pathname === "/api/rooms" && request.method === "POST") {
+        const raw = await request.text();
+        if (raw.length > 1000) return json({ message: "Selección de modo inválida." }, 400);
+        let options: unknown;
+        try { options = raw ? JSON.parse(raw) : {}; } catch { return json({ message: "Selección de modo inválida." }, 400); }
+        const requestedMode = options && typeof options === "object" ? (options as { mode?: unknown }).mode ?? "timed" : null;
+        if (!isMatchMode(requestedMode)) {
+          return json({ message: "Selección de modo inválida." }, 400);
+        }
+        const mode = requestedMode;
         const pin = token().slice(0, 10).toUpperCase();
         const hostToken = token();
-        await store.create(pin, hostToken);
-        return json({ pin, roomId: pin, hostToken }, 201);
+        await store.create(pin, hostToken, mode);
+        return json({ pin, roomId: pin, hostToken, mode }, 201);
       }
       const match = url.pathname.match(/^\/api\/rooms\/([A-Z0-9-]+)(?:\/(join|signal|relay|candidates|ice))?$/i);
       if (!match) return json({ message: "Ruta no encontrada." }, 404);
@@ -54,7 +64,7 @@ export default {
       }
       const room = await store.get(pin);
       if (!room) return json({ message: "Esta sala venció o no existe. Creá otra partida." }, 404);
-      if (!match[2] && request.method === "GET") return json({ pin, roomId: pin });
+      if (!match[2] && request.method === "GET") return json({ pin, roomId: pin, mode: room.mode });
       if (!/^[a-f0-9]{32}$/.test(auth)) return json({ message: "Falta la invitación de esta sala." }, 401);
       const host = auth === room.host;
       if (match[2] === "join" && request.method === "POST") {

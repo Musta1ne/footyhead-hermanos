@@ -3,6 +3,7 @@ import { IRefPhaserGame, PhaserGame } from "../game/PhaserGame";
 import { Link, useLoaderData, useParams } from "react-router-dom";
 import { EventBus } from "../game/EventBus";
 import { controlHint, getControlBindings } from "../game/control-bindings";
+import { isMatchMode, type MatchMode } from "../game/match-mode";
 import "../layout/game.css";
 
 export function Game() {
@@ -10,12 +11,13 @@ export function Game() {
   const phaserRef = useRef<IRefPhaserGame | null>(null);
   const [muted, setMuted] = useState(false);
   const { pin } = useParams();
-  const { roomId } = useLoaderData() as { roomId: string };
+  const { roomId, mode: roomMode } = useLoaderData() as { roomId: string; mode: MatchMode };
+  const mode = isMatchMode(roomMode) ? roomMode : "timed";
   const controls = controlHint(getControlBindings());
 
   const onCurrentActiveScene = (scene: Phaser.Scene) => {
     if (scene.scene.key == "Preloader") {
-      EventBus.emit("room-ready", { pin, roomId });
+      EventBus.emit("room-ready", { pin, roomId, mode });
     }
   };
 
@@ -39,6 +41,7 @@ export function Game() {
         <p className="game-controls-hint" aria-label="Controles de la partida">{controls}</p>
         <footer className="game-room-strip">
           <span>SALA <strong>{pin}</strong></span>
+          <span>{mode === "timed" ? "CON TIEMPO" : mode === "first-to-seven" ? "FIRST TO SEVEN" : "PRACTICE"}</span>
           <span>La partida se pausa si alguno cambia de pestaña.</span>
         </footer>
       </div>

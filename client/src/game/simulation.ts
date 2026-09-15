@@ -1,5 +1,6 @@
 import Matter from "matter-js";
 import { ARENA_SLOPES, PITCH_FLOOR_Y, REFERENCE_VISUALS, VISUAL_SCALE } from "./visual-proportions";
+import type { MatchMode } from "./match-mode";
 
 // Única definición de las reglas: anfitrión y predicción usan la misma física.
 export const RULES = {
@@ -33,7 +34,7 @@ export type BodyState = { x: number; y: number; vx: number; vy: number; angle: n
 export type FootState = { lift: number; tapTicks: number };
 export type Snapshot = {
   tick: number; round: number; pause: number; score: [number, number];
-  match: number; remainingTicks: number; ready: [boolean, boolean];
+  match: number; mode: MatchMode; remainingTicks: number; winner: Team | null; ready: [boolean, boolean];
   players: [BodyState, BodyState]; ball: BodyState;
   inputs: [Input, Input]; kicks: [number, number]; feet: [FootState, FootState];
   boots: [BodyState, BodyState]; ballRotation: number; ballRollMs: number;
@@ -66,6 +67,7 @@ export function circleBox(x: number, y: number, radius: number, halfWidth: numbe
 }
 
 export class Simulation {
+  readonly mode: MatchMode;
   engine = Engine.create({
     gravity: { x: 0, y: 1, scale: RULES.ballGravity / RULES.stepMs ** 2 },
     positionIterations: 10, velocityIterations: 6, constraintIterations: 2,
@@ -109,12 +111,11 @@ export class Simulation {
   ballRollMs = 0;
   tick = 0;
   match = 0;
-  remainingTicks = RULES.matchTicks;
+  remainingTicks: number;
   ready: [boolean, boolean] = [false, false];
-  get finished() { return this.remainingTicks === 0; }
-  get winner(): Team | null {
-    return !this.finished || this.score[0] === this.score[1] ? null : this.score[0] > this.score[1] ? 1 : 2;
-  }
+  winner: Team | null = null;
+  get finished() { return this.winner !== null; }
+  get goldenGoal() { return this.mode === "timed" && this.remainingTicks === 0 && !this.finished; }
 
   requestRematch(team: Team, match: number) {
     if (!this.finished || match !== this.match || this.ready[team - 1]) return false;
@@ -123,7 +124,8 @@ export class Simulation {
     this.tick++;
     if (this.ready.every(Boolean)) {
       this.match++;
-      this.remainingTicks = RULES.matchTicks;
+      this.remainingTicks = this.mode === "timed" ? RULES.matchTicks : 0;
+      this.winner = null;
       this.ready = [false, false];
       this.score = [0, 0]; this.round = 0; this.pause = 0;
       this.inputs = this.inputs.map(input => ({ ...input, direction: 0, jumpHeld: false, kickHeld: false })) as [Input, Input];
@@ -138,7 +140,9 @@ export class Simulation {
   inputs: [Input, Input] = [emptyInput(), emptyInput()];
   kicks: [number, number] = [-100, -100];
 
-  constructor() {
+  constructor(mode: MatchMode = "timed") {
+    this.mode = mode;
+    this.remainingTicks = mode === "timed" ? RULES.matchTicks : 0;
     Composite.add(this.engine.world, [
       ...this.players, ...this.boots, ...this.bootPivots,
       Bodies.rectangle(-10, 300, 20, 768, { isStatic: true, restitution: RULES.wallRestitution }),
@@ -179,7 +183,7 @@ export class Simulation {
   step(one: Input, two: Input) {
     if (this.finished) return;
     this.tick++;
-    this.remainingTicks--;
+    if (this.mode === "timed" && this.remainingTicks > 0) this.remainingTicks--;
     this.clearConstraintWarmth();
     const next = [one, two];
     if (this.pause > 0) {
@@ -225,9 +229,14 @@ export class Simulation {
     this.feet.forEach(foot => { foot.tapTicks = Math.max(0, foot.tapTicks - 1); });
     const { x, y } = this.ball.position;
     if (y > RULES.goalScoreY && (x < RULES.goalScoreX || x > 1024 - RULES.goalScoreX)) {
-      this.score[x < RULES.goalScoreX ? 1 : 0]++;
+      const scorer: Team = x < RULES.goalScoreX ? 2 : 1;
+      this.score[scorer - 1]++;
       this.round++;
-      this.pause = RULES.goalPauseTicks;
+      if (this.goldenGoal || (this.mode === "first-to-seven" && this.score[scorer - 1] >= 7)) {
+        this.winner = scorer;
+      } else {
+        this.pause = RULES.goalPauseTicks;
+      }
     }
   }
 
@@ -369,7 +378,7 @@ export class Simulation {
   snapshot(): Snapshot {
     const body = (b: Matter.Body): BodyState => ({ x: b.position.x, y: b.position.y, vx: b.velocity.x, vy: b.velocity.y, angle: b.angle, spin: b.angularVelocity });
     return { tick: this.tick, round: this.round, pause: this.pause, score: [...this.score],
-      match: this.match, remainingTicks: this.remainingTicks, ready: [...this.ready],
+      match: this.match, mode: this.mode, remainingTicks: this.remainingTicks, winner: this.winner, ready: [...this.ready],
       players: [body(this.players[0]), body(this.players[1])], ball: body(this.ball),
       inputs: [{ ...this.inputs[0] }, { ...this.inputs[1] }], kicks: [...this.kicks],
       feet: [{ ...this.feet[0] }, { ...this.feet[1] }], boots: [body(this.boots[0]), body(this.boots[1])],
@@ -384,7 +393,7 @@ export class Simulation {
       Body.setAngularVelocity(b, s.spin);
     };
     this.tick = state.tick; this.round = state.round; this.pause = state.pause;
-    this.match = state.match; this.remainingTicks = state.remainingTicks; this.ready = [...state.ready];
+    this.match = state.match; this.remainingTicks = state.remainingTicks; this.winner = state.winner; this.ready = [...state.ready];
     this.score = [...state.score]; this.inputs = state.inputs.map(i => ({ ...i })) as [Input, Input];
     this.kicks = [...state.kicks];
     this.feet = [{ ...state.feet[0] }, { ...state.feet[1] }];

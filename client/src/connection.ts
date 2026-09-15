@@ -1,8 +1,8 @@
 import { rememberRoom } from "./game/identity";
-export async function roomRequest(path: string, method = "GET") {
+export async function roomRequest(path: string, method = "GET", body?: unknown) {
   let response: Response;
   try {
-    response = await fetch(`/api/rooms${path}`, { method });
+    response = await fetch(`/api/rooms${path}`, { method, headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
   } catch {
     throw new Error("No se pudo conectar con el servidor. Revisá tu conexión.");
   }

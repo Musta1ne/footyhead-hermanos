@@ -1,10 +1,12 @@
-type Room = { pin: string; host: string; guest: string | null; offer: string | null; answer: string | null; host_ice: string | null; guest_ice: string | null; expires: number; relay: number; host_relay: string | null; guest_relay: string | null };
+import type { MatchMode } from "../client/src/game/match-mode";
+
+type Room = { pin: string; host: string; mode: MatchMode; guest: string | null; offer: string | null; answer: string | null; host_ice: string | null; guest_ice: string | null; expires: number; relay: number; host_relay: string | null; guest_relay: string | null };
 export class Rooms {
   constructor(private db: D1Database) {}
-  async create(pin: string, host: string) {
+  async create(pin: string, host: string, mode: MatchMode) {
     await this.db.batch([
       this.db.prepare("DELETE FROM rooms WHERE expires < ?").bind(Date.now()),
-      this.db.prepare("INSERT INTO rooms (pin, host, expires) VALUES (?, ?, ?)").bind(pin, host, Date.now() + 15 * 60_000),
+      this.db.prepare("INSERT INTO rooms (pin, host, mode, expires) VALUES (?, ?, ?, ?)").bind(pin, host, mode, Date.now() + 15 * 60_000),
     ]);
   }
   get(pin: string) { return this.db.prepare("SELECT * FROM rooms WHERE pin = ? AND expires > ?").bind(pin, Date.now()).first<Room>(); }

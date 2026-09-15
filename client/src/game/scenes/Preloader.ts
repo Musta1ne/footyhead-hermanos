@@ -1,5 +1,6 @@
 import { Scene } from "phaser";
 import { EventBus } from "../EventBus";
+import type { MatchMode } from "../match-mode";
 
 export class Preloader extends Scene {
   gamePin: { pin: string };
@@ -42,7 +43,7 @@ export class Preloader extends Scene {
   }
 
   create() {
-    EventBus.once("room-ready", (data: { pin: string; roomId: string }) => {
+    EventBus.once("room-ready", (data: { pin: string; roomId: string; mode: MatchMode }) => {
       this.scene.start("Game", data);
     });
     EventBus.emit("current-scene-ready", this);

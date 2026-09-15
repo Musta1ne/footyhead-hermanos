@@ -36,9 +36,11 @@ test("sala real en SQLite: roles, tercero rechazado, señal privada y vencimient
   const request = (path: string, method = "GET", token?: string, body?: unknown) => worker.fetch(new Request(`https://game.test${path}`, {
     method, headers: token ? { Authorization: `Bearer ${token}` } : {}, body: body ? JSON.stringify(body) : undefined,
   }), { DB: db as any, ASSETS: { fetch: async () => new Response("asset") } as any });
-  const created = await request("/api/rooms", "POST");
+  assert.equal((await request("/api/rooms", "POST", undefined, { mode: "unknown" })).status, 400);
+  const created = await request("/api/rooms", "POST", undefined, { mode: "first-to-seven" });
   assert.equal(created.status, 201);
-  const { pin, hostToken } = await created.json() as any;
+  const { pin, hostToken, mode } = await created.json() as any;
+  assert.equal(mode, "first-to-seven");
   const guest = crypto.randomUUID().replaceAll("-", "");
   assert.equal((await (await request(`/api/rooms/${pin}/join`, "POST", hostToken)).json() as any).role, "host");
   assert.equal((await (await request(`/api/rooms/${pin}/join`, "POST", guest)).json() as any).role, "guest");
@@ -65,6 +67,7 @@ test("sala real en SQLite: roles, tercero rechazado, señal privada y vencimient
   assert.deepEqual((await (await request(`/api/rooms/${pin}/signal`, "GET", guest)).json() as any).description, offer);
   assert.equal((await request(`/api/rooms/${pin}/signal`, "POST", guest, offer)).status, 400);
   const publicRoom = await (await request(`/api/rooms/${pin}`)).json() as any;
+  assert.equal(publicRoom.mode, "first-to-seven");
   assert.equal(publicRoom.host, undefined); assert.equal(publicRoom.hostToken, undefined);
   const relay = (seq: number, fast: unknown = null) => ({ seq, ack: 0, controls: [], fast });
   assert.equal((await request(`/api/rooms/${pin}/relay`, "POST", "a".repeat(32), relay(1))).status, 403);

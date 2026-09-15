@@ -23,11 +23,17 @@ Jugador que entra a una sala creada por otra persona y ocupa el lado derecho de 
 _Evitar_: guest.
 
 **Partida**:
-Encuentro entre los dos jugadores de una sala, con un tiempo de juego y un marcador propios. Termina cuando se agota el tiempo; puede acabar en victoria o empate.
+Encuentro entre los dos jugadores de una sala, con un marcador y un modo de juego propios. Según el modo, puede terminar con un ganador o continuar indefinidamente.
 _Evitar_: sala, ronda.
 
+**Modo de juego**:
+Regla que el anfitrión elige al crear la sala y que determina cómo se juega y cuándo termina cada partida. La elección se mantiene durante las revanchas de esa sala.
+
+**Gol de oro**:
+Gol que decide la partida con tiempo después de que se agota el reloj. Lo gana quien lo marca, sin importar el marcador anterior.
+
 **Gol**:
-Punto que recibe un jugador cuando la pelota entra en el arco de su rival. Después de un gol, el juego se reanuda con un saque.
+Punto que recibe un jugador cuando la pelota entra en el arco de su rival. Si la partida continúa, después del gol se reanuda con un saque.
 
 **Saque**:
 Reanudación del juego con ambos jugadores y la pelota en sus posiciones iniciales, al comenzar una partida o después de un gol.
