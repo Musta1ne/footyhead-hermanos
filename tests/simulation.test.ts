@@ -247,7 +247,7 @@ test("dos pies levantados también se bloquean entre sí", () => {
   } finally { sim.destroy(); }
 });
 
-test("el minuto incluye las pausas y al llegar a cero activa el gol de oro", () => {
+test("el minuto incluye las pausas y al llegar a cero gana quien lleva ventaja", () => {
   const sim = new Simulation();
   try {
     const input = emptyInput();
@@ -258,12 +258,8 @@ test("el minuto incluye las pausas y al llegar a cero activa el gol de oro", () 
     assert.equal(sim.remainingTicks, 1);
     sim.step(input, input);
     assert.equal(sim.remainingTicks, 0);
-    assert.equal(sim.goldenGoal, true);
-    assert.equal(sim.finished, false);
-    sim.pause = 0;
-    Matter.Body.setPosition(sim.ball, { x: 40, y: 530 });
-    sim.step(input, input);
-    assert.equal(sim.winner, 2, "el gol de oro decide aunque el rival llevara ventaja");
+    assert.equal(sim.goldenGoal, false);
+    assert.equal(sim.winner, 1);
     const final = sim.snapshot();
     for (let i = 0; i < 120; i++) sim.step({ ...input, direction: 1, kick: 1 }, input);
     assert.deepEqual(sim.snapshot(), final);
@@ -520,6 +516,36 @@ test("el pie describe una órbita, queda arriba y vuelve al reposo al soltar", (
       assert.ok(sim.feet[index].lift < partial);
     } finally { sim.destroy(); }
   }
+});
+
+test("con empate al terminar el minuto, el próximo gol decide", () => {
+  const sim = new Simulation();
+  try {
+    sim.remainingTicks = 1;
+    sim.score = [2, 2];
+    sim.step(emptyInput(), emptyInput());
+    assert.equal(sim.remainingTicks, 0);
+    assert.equal(sim.finished, false);
+    assert.equal(sim.goldenGoal, true);
+    Matter.Body.setPosition(sim.ball, { x: 40, y: 530 });
+    sim.step(emptyInput(), emptyInput());
+    assert.deepEqual(sim.score, [2, 3]);
+    assert.equal(sim.winner, 2);
+    assert.equal(sim.goldenGoal, false);
+  } finally { sim.destroy(); }
+});
+
+test("un gol que empata en el último paso lleva la partida al gol de oro", () => {
+  const sim = new Simulation();
+  try {
+    sim.remainingTicks = 1;
+    sim.score = [1, 0];
+    Matter.Body.setPosition(sim.ball, { x: 40, y: 530 });
+    sim.step(emptyInput(), emptyInput());
+    assert.deepEqual(sim.score, [1, 1]);
+    assert.equal(sim.finished, false);
+    assert.equal(sim.goldenGoal, true);
+  } finally { sim.destroy(); }
 });
 
 test("First to seven termina exactamente con el séptimo gol y conserva la regla en el estado", () => {

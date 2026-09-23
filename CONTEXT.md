@@ -30,7 +30,7 @@ _Evitar_: sala, ronda.
 Regla que el anfitrión elige al crear la sala y que determina cómo se juega y cuándo termina cada partida. La elección se mantiene durante las revanchas de esa sala.
 
 **Gol de oro**:
-Gol que decide la partida con tiempo después de que se agota el reloj. Lo gana quien lo marca, sin importar el marcador anterior.
+Gol que decide una partida con tiempo cuando el marcador está empatado al agotarse el reloj. Lo gana quien lo marca.
 
 **Gol**:
 Punto que recibe un jugador cuando la pelota entra en el arco de su rival. Si la partida continúa, después del gol se reanuda con un saque.

@@ -75,7 +75,7 @@ export function drawStadium(scene: Scene, mode: MatchMode) {
   scene.add.text(511, 627, "FOOTY HEAD", { fontFamily: ARCADE_FONT, fontSize: 26, color: "#fff5da", stroke: "#233021", strokeThickness: 4 }).setOrigin(0.5);
   scene.add.text(511, 657, "HERMANOS", { fontFamily: ARCADE_FONT, fontSize: 29, color: "#ffe52b", stroke: "#233021", strokeThickness: 4 }).setOrigin(0.5);
   const modeCopy = {
-    timed: ["TIMED", "1 MINUTO · GOL DE ORO"],
+    timed: ["TIMED", "1 MIN · ORO SI EMPATAN"],
     "first-to-seven": ["FIRST TO SEVEN", "PRIMERO EN MARCAR 7"],
     practice: ["PRACTICE", "SIN RELOJ NI LÍMITE"],
   }[mode];

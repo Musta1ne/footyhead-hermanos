@@ -115,7 +115,12 @@ export class Simulation {
   ready: [boolean, boolean] = [false, false];
   winner: Team | null = null;
   get finished() { return this.winner !== null; }
-  get goldenGoal() { return this.mode === "timed" && this.remainingTicks === 0 && !this.finished; }
+  get goldenGoal() { return this.mode === "timed" && this.remainingTicks === 0 && !this.finished && this.score[0] === this.score[1]; }
+
+  private resolveTimedWinner() {
+    if (this.mode !== "timed" || this.remainingTicks !== 0 || this.score[0] === this.score[1]) return;
+    this.winner = this.score[0] > this.score[1] ? 1 : 2;
+  }
 
   requestRematch(team: Team, match: number) {
     if (!this.finished || match !== this.match || this.ready[team - 1]) return false;
@@ -188,7 +193,9 @@ export class Simulation {
     const next = [one, two];
     if (this.pause > 0) {
       this.inputs = [{ ...one }, { ...two }];
-      if (--this.pause === 0) this.serve();
+      this.pause--;
+      this.resolveTimedWinner();
+      if (this.pause === 0 && !this.finished) this.serve();
       return;
     }
     next.forEach((input, i) => {
@@ -232,12 +239,14 @@ export class Simulation {
       const scorer: Team = x < RULES.goalScoreX ? 2 : 1;
       this.score[scorer - 1]++;
       this.round++;
-      if (this.goldenGoal || (this.mode === "first-to-seven" && this.score[scorer - 1] >= 7)) {
+      this.resolveTimedWinner();
+      if (this.mode === "first-to-seven" && this.score[scorer - 1] >= 7) {
         this.winner = scorer;
-      } else {
+      } else if (!this.finished) {
         this.pause = RULES.goalPauseTicks;
       }
     }
+    this.resolveTimedWinner();
   }
 
   private supported(player: Matter.Body) {
