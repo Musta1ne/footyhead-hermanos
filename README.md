@@ -13,17 +13,17 @@ Abrí [Footy Head online](https://footyhead-hermanos-agustin.agustinmacello.chat
 
 Ambos usan **← y → para moverse, ↑ para saltar y Espacio para patear**. Hacé clic en el juego si las teclas no responden. No se necesita cámara ni micrófono.
 
-Mantengan el juego visible: cambiar de pestaña pausa la partida para los dos. Si alguno cierra o recarga, creen otra sala. Las invitaciones sin uso vencen a los 15 minutos; las partidas por servidor mantienen su sala activa mientras juegan.
+Mantengan el juego visible: cambiar de pestaña pausa la partida para los dos. Si alguno cierra o recarga, creen otra sala. Las invitaciones sin uso vencen a los 15 minutos.
 
 El indicador muestra la ida y vuelta entre ustedes. No es el tiempo de respuesta del teclado: el movimiento se calcula localmente. No hay un ping prometido; depende de la ruta entre sus conexiones.
 
 ## Cómo se conecta
 
-El alojamiento entrega la página e intercambia la oferta inicial de WebRTC. Si la conexión directa funciona, teclas, pelota y marcador viajan entre los dos navegadores. Si no conecta, el juego cambia automáticamente a un respaldo HTTPS por el mismo alojamiento. Render y Colyseus ya no forman parte del juego.
+El alojamiento entrega la página e intercambia la oferta inicial de WebRTC. La partida usa una conexión directa entre navegadores o TURN si está configurado y WebRTC elige esa ruta. Si ninguna ruta conecta, el juego informa el error para crear otra sala. Render y Colyseus ya no forman parte del juego.
 
 El creador calcula la física oficial. El invitado predice su movimiento y lo ajusta a los estados confirmados. Los gráficos sólo dibujan esa simulación: no hay dos motores distintos empujando a los personajes.
 
-La conexión directa no necesita contratar TURN. En redes restrictivas, un TURN cercano permite conservar WebRTC; sin uno disponible verán **Conexión por servidor**, el respaldo HTTPS que puede tener mucha demora. El juego avisa si falta TURN. Cambiar sólo el alojamiento de la página no reduce el ping de una partida WebRTC. Después de actualizar, ambos deben recargar y crear una sala nueva. Más detalles y opciones para Argentina en [ONLINE.md](ONLINE.md).
+La conexión directa no necesita contratar TURN. En redes restrictivas, un TURN cercano permite conservar WebRTC; si no se logra conectar, no se inicia una partida lenta por servidor. El juego avisa si falta TURN. Cambiar sólo el alojamiento de la página no reduce el ping de una partida WebRTC. Después de actualizar, ambos deben recargar y crear una sala nueva. Más detalles y opciones para Argentina en [ONLINE.md](ONLINE.md).
 
 ## Ejecutar en tu computadora
 
@@ -52,7 +52,7 @@ npm test
 npm run build
 ```
 
-Las pruebas cubren física, goles, privacidad de las salas, dos conexiones WebRTC reales y el respaldo HTTPS con WebRTC bloqueado y respuestas perdidas. Los ensayos locales no equivalen a medir las redes de dos casas.
+Las pruebas cubren física, goles, privacidad de las salas, dos conexiones WebRTC reales y el error cuando WebRTC está bloqueado. Los ensayos locales no equivalen a medir las redes de dos casas.
 
 ## Créditos
 

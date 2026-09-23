@@ -152,9 +152,7 @@ export class Game extends Scene {
       const message = this.confirmedFinished ? `¡Terminó el partido! ${result}` : paused ? "Partida pausada: los dos deben volver a la pestaña del juego." : this.sim.goldenGoal ? "¡Gol de oro! El próximo gol gana." : "";
       this.status.setText(message).setVisible(Boolean(message));
       this.pingText.setText(`Conexión ${this.peer.route}: ${this.peer.rtt ? Math.round(this.peer.rtt) + " ms" : "midiendo…"} · Jugás a la ${this.peer.host ? "izquierda" : "derecha"}`);
-      this.networkText.setText(this.peer.route === "por servidor"
-        ? `Respaldo HTTPS: puede tener mucha demora. ${this.peer.networkNote || "WebRTC no logró conectar."}`
-        : this.peer.rtt > 200 ? "Demora alta: prueben cable de red y pausen las descargas en ambas casas." : "");
+      this.networkText.setText(this.peer.rtt > 200 ? "Demora alta: prueben cable de red y pausen las descargas en ambas casas." : "");
     }
     this.scoreText.setText(this.confirmedScore.join(" : "));
     const seconds = Math.ceil(this.sim.remainingTicks / 60);

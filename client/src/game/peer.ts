@@ -1,6 +1,5 @@
-import { Relay } from "./relay";
 import { roomIdentity } from "./identity";
-// Prefiere WebRTC; HTTPS permite jugar cuando la red bloquea los candidatos ICE.
+// WebRTC elige una ruta directa o TURN entre los candidatos ICE disponibles.
 export class Peer {
   pc?: RTCPeerConnection;
   fast?: RTCDataChannel;
@@ -21,9 +20,7 @@ export class Peer {
   private lastHeard = performance.now();
   private auth: string;
   private identityError = "";
-  private relay?: Relay;
-  private joined = false;
-  private directFailed = false;
+  private connectionFailed = false;
   onMessage: (message: Record<string, unknown>) => void = () => {};
   onReady: () => void = () => {};
 
@@ -59,8 +56,7 @@ export class Peer {
         if (!acquired) throw new Error("Ya tenés esta sala abierta en otra pestaña. Volvé a esa pestaña o cerrala antes de entrar acá.");
       }
       this.host = (await this.api("join", "POST")).role === "host";
-      this.joined = true;
-      if (!globalThis.RTCPeerConnection) { this.startRelay(); return; }
+      if (!globalThis.RTCPeerConnection) throw new Error("Este navegador no admite WebRTC. Probá con otro navegador.");
       const config = await this.api("ice");
       if (this.closed) return;
       this.turnAvailable = !!config.turnAvailable;
@@ -72,7 +68,7 @@ export class Peer {
       pc.onconnectionstatechange = () => {
         if (pc.connectionState === "failed") {
           if (this.ready) this.fail("Se interrumpió la partida. Creá otra sala para reconectar.");
-          else this.directFailed = true;
+          else this.connectionFailed = true;
         }
         if (pc.connectionState === "disconnected") this.status("Se interrumpió la conexión. Esperando unos segundos…");
       };
@@ -94,9 +90,9 @@ export class Peer {
           await this.api("candidates", "POST", { candidates });
           this.sentCandidates = candidates.length;
         }
-        const { description, relay, candidates = [] } = await this.api("signal");
+        const { description, candidates = [] } = await this.api("signal");
         if (this.ready || this.closed) break;
-        if (relay || this.directFailed) { this.startRelay(); return; }
+        if (this.connectionFailed) throw new Error(this.connectionError());
         if (description && !pc.remoteDescription) {
           await pc.setRemoteDescription(description);
           if (!this.host) await this.publish(await pc.createAnswer());
@@ -108,16 +104,17 @@ export class Peer {
             await pc.addIceCandidate(candidates[this.receivedCandidates]);
           }
         }
-        if (performance.now() > connectionDeadline) { this.startRelay(); return; }
+        if (performance.now() > connectionDeadline) throw new Error(this.connectionError());
         if (performance.now() > deadline) throw new Error("La espera terminó. Creá otra sala para jugar.");
         await new Promise(resolve => setTimeout(resolve, pc.remoteDescription ? 250 : 750));
       }
     } catch (error) {
-      if (!this.closed && !this.ready) {
-        if (this.joined) this.startRelay();
-        else this.fail(error instanceof Error ? error.message : "No se pudo conectar.");
-      }
+      if (!this.closed && !this.ready) this.fail(error instanceof Error ? error.message : "No se pudo conectar.");
     }
+  }
+
+  private connectionError() {
+    return `No se pudo establecer una conexión directa ni por TURN. ${this.networkNote || "Revisen sus redes y creen otra sala."}`;
   }
 
   private async publish(description: RTCSessionDescriptionInit) {
@@ -128,7 +125,7 @@ export class Peer {
   }
 
   private attach(channel: RTCDataChannel) {
-    if (this.relay || this.closed) { channel.close(); return; }
+    if (this.closed) { channel.close(); return; }
     if (channel.label === "game") this.fast = channel;
     else if (channel.label === "control") this.control = channel;
     else { channel.close(); return; }
@@ -137,7 +134,7 @@ export class Peer {
       this.markReady();
       void this.inspectRoute().catch(() => {});
     };
-    channel.onclose = () => { if (!this.closed && !this.relay) { if (this.ready) this.fail("La partida se cerró. Volvé para crear otra."); else this.directFailed = true; } };
+    channel.onclose = () => { if (!this.closed) { if (this.ready) this.fail("La partida se cerró. Volvé para crear otra."); else this.connectionFailed = true; } };
     channel.onmessage = event => {
       if (typeof event.data !== "string" || event.data.length > 16_000) return;
       try {
@@ -148,16 +145,6 @@ export class Peer {
     };
   }
 
-  private startRelay() {
-    if (this.closed || this.relay || this.ready) return;
-    this.route = "por servidor";
-    this.status("Conectando por respaldo HTTPS (más demora). Esperando al otro jugador…");
-    this.relay = new Relay(packet => this.api("relay", "POST", packet), () => this.markReady(), message => this.receive(message), text => this.fail(text));
-    if (this.pc) this.pc.onconnectionstatechange = null;
-    this.fast?.close(); this.control?.close(); this.pc?.close();
-    void this.relay.run();
-  }
-
   private markReady() {
     if (this.ready || this.closed) return;
     this.ready = true;
@@ -166,7 +153,7 @@ export class Peer {
     this.pingTimer = setInterval(() => {
       if (performance.now() - this.lastHeard > 12_000) { this.fail("El otro jugador se desconectó. Creá una nueva partida."); return; }
       this.send({ type: "ping", at: performance.now() }, true);
-      if (!this.relay) void this.inspectRoute().catch(() => {});
+      void this.inspectRoute().catch(() => {});
     }, 2000);
   }
 
@@ -189,7 +176,6 @@ export class Peer {
   }
 
   send(message: unknown, reliable = false) {
-    if (this.relay) { this.relay.send(message as Record<string, unknown>, reliable); return; }
     const channel = reliable ? this.control : this.fast;
     // No acumular estados viejos si la red se congestiona.
     if (!this.closed && channel?.readyState === "open" && (reliable ? channel.bufferedAmount < 64_000 : channel.bufferedAmount === 0)) {
@@ -202,7 +188,6 @@ export class Peer {
     this.closed = true; this.ready = false;
     this.abort.abort(); clearInterval(this.pingTimer);
     this.unlock?.(); this.unlock = undefined;
-    this.relay?.close();
     this.fast?.close(); this.control?.close(); this.pc?.close();
   }
 }

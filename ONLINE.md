@@ -6,11 +6,10 @@ La página sigue en Sites. WebRTC intenta todas las rutas (`iceTransportPolicy: 
 
 - **Directa:** teclas y estados viajan entre las casas. El alojamiento de la página no participa en esos paquetes.
 - **Por TURN:** WebRTC pasa por un repetidor; su ubicación y la ruta de ambos proveedores importan. Preferir un servicio con UDP y conservar TCP/TLS para redes que bloquean UDP.
-- **Por servidor:** respaldo HTTPS que intercambia buzones en D1. No es TURN ni un servidor de juego de baja latencia. Cada recorrido incluye solicitudes y acceso a la base; puede producir demoras muy altas. El juego lo indica y avisa si faltan credenciales TURN.
+
+Si ninguna ruta WebRTC conecta, la partida no comienza y el juego pide crear otra sala. HTTPS sigue entregando la página y coordinando la conexión inicial.
 
 El canal `game` no ordena ni retransmite paquetes. Si tiene datos pendientes de envío, descarta el siguiente estado para no acumular una cola de fotogramas viejos. El canal `control` es fiable para pausa, ping, resultado y revancha. El ping mide ida y vuelta entre jugadores; antes de recibirlo aparece “midiendo…”. La física oficial corre en el creador y el invitado predice su movimiento. No se promete un ping determinado ni se confunde una medición local con las dos casas.
-
-El respaldo HTTPS mantiene el último estado y hasta 64 controles pendientes por jugador, con secuencias y confirmaciones. Hace un intercambio por vez, hasta diez por segundo, y renueva la sala mientras juegan. Es una vía de emergencia para dos personas, no la solución recomendada para un partido rápido.
 
 ## Salas y pestañas
 
@@ -29,7 +28,7 @@ Opción gestionada: [Cloudflare Realtime TURN](https://developers.cloudflare.com
 - `TURN_KEY_ID`: identificador de la clave TURN.
 - `TURN_KEY_API_TOKEN`: secreto de esa clave, como variable secreta del servidor.
 
-El endpoint autenticado `/api/rooms/PIN/ice` solicita credenciales de dos horas según la [API oficial](https://developers.cloudflare.com/realtime/turn/generate-credentials/). La clave permanente nunca llega al navegador. Se incluyen STUN, TURN UDP y las alternativas TCP/TLS devueltas por el proveedor. Para sesiones de más de dos horas, creen una sala nueva; esta versión no renueva credenciales en una partida abierta. Si el proveedor falla, se conserva STUN y el respaldo HTTPS, con aviso de TURN no disponible.
+El endpoint autenticado `/api/rooms/PIN/ice` solicita credenciales de dos horas según la [API oficial](https://developers.cloudflare.com/realtime/turn/generate-credentials/). La clave permanente nunca llega al navegador. Se incluyen STUN, TURN UDP y las alternativas TCP/TLS devueltas por el proveedor. Para sesiones de más de dos horas, creen una sala nueva; esta versión no renueva credenciales en una partida abierta. Si el proveedor falla, se conserva STUN para intentar la conexión directa y se avisa que TURN no está disponible.
 
 Para otro proveedor o un coturn propio, `ICE_SERVERS_JSON` acepta una lista estándar con `urls`, `username` y `credential`. Se suma a los STUN predeterminados para no deshabilitar accidentalmente la conexión directa. Las credenciales ICE que usa el navegador son visibles para el jugador: usar credenciales temporales o una cuenta de relay limitada, nunca una clave administrativa. No guardar secretos en Git. El endpoint anterior `/api/config` se mantiene para clientes antiguos; nunca emite la clave permanente de Cloudflare.
 
@@ -45,4 +44,4 @@ Mover únicamente el HTML a una región cercana no arregla el ping WebRTC. Para 
 
 Reutilizar `.openai/hosting.json`, que identifica el sitio existente. `npm run build` genera `dist`, el Worker y las migraciones D1. La migración `0002` incorpora candidatos ICE; aplicarla al publicar junto con el cliente. No alcanza un hosting de HTML estático. Las variables de producción se gestionan en Sites y no en el manifiesto.
 
-`npm test` cubre salas y autorización con SQLite real, identidad entre pestañas, bloqueo de pestañas duplicadas, credenciales TURN con proveedor simulado, dos conexiones WebRTC reales y respaldo HTTPS con respuestas perdidas. `npm run build` verifica los tipos y prepara la publicación. El proveedor TURN real y las redes de las dos casas requieren una prueba posterior con credenciales válidas.
+`npm test` cubre salas y autorización con SQLite real, identidad entre pestañas, bloqueo de pestañas duplicadas, credenciales TURN con proveedor simulado, dos conexiones WebRTC reales y el error cuando WebRTC falla. `npm run build` verifica los tipos y prepara la publicación. El proveedor TURN real y las redes de las dos casas requieren una prueba posterior con credenciales válidas.

@@ -1,6 +1,6 @@
 import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
 
-// Señalización y dos buzones acotados para el respaldo HTTPS.
+// Señalización WebRTC. Las columnas relay son heredadas y ya no se usan.
 export const rooms = sqliteTable("rooms", {
   pin: text("pin").primaryKey(),
   host: text("host").notNull(),

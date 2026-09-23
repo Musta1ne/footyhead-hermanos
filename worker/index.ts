@@ -19,7 +19,7 @@ export default {
       return response;
     }
     try {
-      if (url.pathname === "/health") return json({ ok: true, transport: "webrtc", fallback: "https" });
+      if (url.pathname === "/health") return json({ ok: true, transport: "webrtc" });
       if (url.pathname === "/api/config" && request.method === "GET") {
         return json({ iceServers: env.ICE_SERVERS_JSON ? JSON.parse(env.ICE_SERVERS_JSON) : [
           { urls: ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"] },
@@ -43,25 +43,10 @@ export default {
         await store.create(pin, hostToken, mode);
         return json({ pin, roomId: pin, hostToken, mode }, 201);
       }
-      const match = url.pathname.match(/^\/api\/rooms\/([A-Z0-9-]+)(?:\/(join|signal|relay|candidates|ice))?$/i);
+      const match = url.pathname.match(/^\/api\/rooms\/([A-Z0-9-]+)(?:\/(join|signal|candidates|ice))?$/i);
       if (!match) return json({ message: "Ruta no encontrada." }, 404);
       const pin = match[1].replaceAll("-", "").toUpperCase();
       const auth = request.headers.get("Authorization")?.replace(/^Bearer /, "") || "";
-      if (match[2] === "relay" && request.method === "POST") {
-        if (!/^[a-f0-9]{32}$/.test(auth)) return json({ message: "Falta la invitación de esta sala." }, 401);
-        const raw = await request.text();
-        if (raw.length > 24000) return json({ message: "Mensaje demasiado grande." }, 413);
-        let packet;
-        try { packet = JSON.parse(raw); } catch { return json({ message: "Mensaje inválido." }, 400); }
-        const message = (m: unknown) => !!m && typeof m === "object" && !Array.isArray(m);
-        if (!packet || !Number.isSafeInteger(packet.seq) || packet.seq < 1 || !Number.isSafeInteger(packet.ack) || packet.ack < 0
-          || !Array.isArray(packet.controls) || packet.controls.length > 64
-          || !packet.controls.every((c: any, i: number) => Number.isSafeInteger(c.id) && c.id > 0 && message(c.message) && (i === 0 || c.id > packet.controls[i - 1].id))
-          || (packet.fast !== null && !message(packet.fast))) return json({ message: "Mensaje inválido." }, 400);
-        const result = await store.relay(pin, auth, JSON.stringify({ seq: packet.seq, ack: packet.ack, controls: packet.controls, fast: packet.fast, at: Date.now() }));
-        if (!result) return json({ message: "La sala venció o no pertenecés a ella. Creá otra partida." }, 403);
-        return json({ peer: JSON.parse(result.peer || "null"), now: Date.now() });
-      }
       const room = await store.get(pin);
       if (!room) return json({ message: "Esta sala venció o no existe. Creá otra partida." }, 404);
       if (!match[2] && request.method === "GET") return json({ pin, roomId: pin, mode: room.mode });
@@ -85,7 +70,7 @@ export default {
         return json({ ok: true });
       }
       if (match[2] === "signal" && request.method === "GET") {
-        return json({ description: JSON.parse((host ? room.answer : room.offer) || "null"), relay: !!room.relay,
+        return json({ description: JSON.parse((host ? room.answer : room.offer) || "null"),
           candidates: JSON.parse((host ? room.guest_ice : room.host_ice) || "[]") });
       }
       if (match[2] === "signal" && request.method === "POST") {

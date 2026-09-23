@@ -1,6 +1,6 @@
 import type { MatchMode } from "../client/src/game/match-mode";
 
-type Room = { pin: string; host: string; mode: MatchMode; guest: string | null; offer: string | null; answer: string | null; host_ice: string | null; guest_ice: string | null; expires: number; relay: number; host_relay: string | null; guest_relay: string | null };
+type Room = { pin: string; host: string; mode: MatchMode; guest: string | null; offer: string | null; answer: string | null; host_ice: string | null; guest_ice: string | null; expires: number };
 export class Rooms {
   constructor(private db: D1Database) {}
   async create(pin: string, host: string, mode: MatchMode) {
@@ -25,15 +25,5 @@ export class Rooms {
     // Listas acumulativas: un reintento atrasado no borra candidatos nuevos.
     await this.db.prepare(`UPDATE rooms SET ${column} = ? WHERE pin = ? AND COALESCE(json_array_length(${column}), 0) < json_array_length(?)`)
       .bind(candidates, pin, candidates).run();
-  }
-  async relay(pin: string, auth: string, packet: string) {
-    // Autenticar, guardar y leer al rival en un solo viaje a D1. Nunca cambiar
-    // el buzón del otro rol ni reemplazar un paquete por un reintento anterior.
-    return this.db.prepare(`UPDATE rooms SET relay = 1,
-      host_relay = CASE WHEN host = ? AND COALESCE(json_extract(host_relay, '$.seq'), 0) < json_extract(?, '$.seq') THEN ? ELSE host_relay END,
-      guest_relay = CASE WHEN guest = ? AND COALESCE(json_extract(guest_relay, '$.seq'), 0) < json_extract(?, '$.seq') THEN ? ELSE guest_relay END,
-      expires = ? WHERE pin = ? AND expires > ? AND (host = ? OR guest = ?)
-      RETURNING CASE WHEN host = ? THEN guest_relay ELSE host_relay END AS peer`)
-      .bind(auth, packet, packet, auth, packet, packet, Date.now() + 15 * 60_000, pin, Date.now(), auth, auth, auth).first<{ peer: string | null }>();
   }
 }
