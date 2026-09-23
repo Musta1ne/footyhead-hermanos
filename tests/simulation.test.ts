@@ -658,13 +658,13 @@ test("Practice permite seguir jugando sin reloj ni límite de goles", () => {
   } finally { sim.destroy(); }
 });
 
-test("la pelota rápida se limita después de 200 ms de rodar", () => {
+test("la pelota rápida se limita después de 150 ms de rodar", () => {
   const sim = new Simulation();
   try {
     Matter.Body.setPosition(sim.ball, { x: 512, y: PITCH_FLOOR_Y - RULES.ballRadius });
     Matter.Body.setVelocity(sim.ball, { x: 6, y: 0 });
-    for (let i = 0; i < 11; i++) sim.step(emptyInput(), emptyInput());
-    assert.ok(sim.ball.velocity.x > RULES.maxRollSpeed, "no debe frenarse antes de 200 ms");
+    for (let i = 0; i < 8; i++) sim.step(emptyInput(), emptyInput());
+    assert.ok(sim.ball.velocity.x > RULES.maxRollSpeed, "no debe frenarse antes de 150 ms");
     sim.step(emptyInput(), emptyInput());
     assert.equal(sim.ball.velocity.x, RULES.maxRollSpeed);
     assert.equal(sim.ballRollMs, RULES.rollLimitDelayMs);
@@ -687,7 +687,7 @@ test("despegar o picar reinicia el tiempo continuo de rodamiento", () => {
   try {
     Matter.Body.setPosition(sim.ball, { x: 512, y: PITCH_FLOOR_Y - RULES.ballRadius });
     Matter.Body.setVelocity(sim.ball, { x: -6, y: 0 });
-    for (let i = 0; i < 11; i++) sim.step(emptyInput(), emptyInput());
+    for (let i = 0; i < 8; i++) sim.step(emptyInput(), emptyInput());
     assert.ok(sim.ballRollMs < RULES.rollLimitDelayMs);
 
     Matter.Body.setPosition(sim.ball, { x: 512, y: PITCH_FLOOR_Y - RULES.ballRadius - 20 });
@@ -707,8 +707,8 @@ test("despegar o picar reinicia el tiempo continuo de rodamiento", () => {
 
     Matter.Body.setPosition(sim.ball, { x: 512, y: PITCH_FLOOR_Y - RULES.ballRadius });
     Matter.Body.setVelocity(sim.ball, { x: -6, y: 0 });
-    for (let i = 0; i < 11; i++) sim.step(emptyInput(), emptyInput());
-    assert.ok(Math.abs(sim.ball.velocity.x) > RULES.maxRollSpeed, "debe esperar otros 200 ms completos");
+    for (let i = 0; i < 8; i++) sim.step(emptyInput(), emptyInput());
+    assert.ok(Math.abs(sim.ball.velocity.x) > RULES.maxRollSpeed, "debe esperar otros 150 ms completos");
     sim.step(emptyInput(), emptyInput());
     assert.equal(sim.ball.velocity.x, -RULES.maxRollSpeed);
   } finally { sim.destroy(); }

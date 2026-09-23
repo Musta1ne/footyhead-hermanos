@@ -67,7 +67,7 @@ punto de contacto determinan el impulso reciproco del solucionador de pelota.
 | Restitucion de bota | 0,45 | La respuesta depende tambien de su masa y velocidad |
 | Restitucion de paredes/postes | 0,45 | Dejan de ser trampolines |
 | Damping de la pelota | 0,998 por paso | Vuelo y rodadura conservan mejor el impulso horizontal |
-| Tope tras rodar 200 ms | 3 px/paso | El jugador puede alcanzar una pelota rapida en el piso |
+| Tope tras rodar 150 ms | 2,5 px/paso | El jugador puede alcanzar una pelota rapida en el piso |
 
 La bota tiene masa 2,4, friccion de aire 0 y un pivote de longitud cero
 con resorte torsional 0,34 y amortiguacion angular 0,16. Su inercia efectiva
@@ -89,8 +89,8 @@ la pelota sigue pudiendo rodar y las patadas siguen respondiendo al primer
 paso.
 
 Cuando la pelota permanece apoyada, con velocidad vertical de hasta 0,05
-px/paso, el simulador acumula tiempo de rodamiento. Al completar 200 ms limita
-solo la magnitud horizontal que exceda 3 px/paso; una pelota mas lenta nunca
+px/paso, el simulador acumula tiempo de rodamiento. Al completar 150 ms limita
+solo la magnitud horizontal que exceda 2,5 px/paso; una pelota mas lenta nunca
 se acelera. Despegar, rebotar o detenerse reinicia el contador.
 
 ## Contactos de la pelota y proporciones del pie
