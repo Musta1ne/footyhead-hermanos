@@ -1,5 +1,6 @@
 import { roomIdentity } from "./identity";
-// WebRTC elige una ruta directa o TURN entre los candidatos ICE disponibles.
+// STUN descubre candidatos para conectar los dos navegadores directamente.
+const ICE_SERVERS: RTCIceServer[] = [{ urls: ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"] }];
 export class Peer {
   pc?: RTCPeerConnection;
   fast?: RTCDataChannel;
@@ -8,9 +9,6 @@ export class Peer {
   ready = false;
   closed = false;
   rtt = 0;
-  route = "directa";
-  turnAvailable = false;
-  networkNote = "";
   private localCandidates: RTCIceCandidateInit[] = [];
   private sentCandidates = 0;
   private receivedCandidates = 0;
@@ -57,11 +55,7 @@ export class Peer {
       }
       this.host = (await this.api("join", "POST")).role === "host";
       if (!globalThis.RTCPeerConnection) throw new Error("Este navegador no admite WebRTC. Probá con otro navegador.");
-      const config = await this.api("ice");
-      if (this.closed) return;
-      this.turnAvailable = !!config.turnAvailable;
-      this.networkNote = config.turnWarning || (this.turnAvailable ? "" : "TURN no está configurado.");
-      const pc = this.pc = new RTCPeerConnection({ iceServers: config.iceServers, iceTransportPolicy: "all" });
+      const pc = this.pc = new RTCPeerConnection({ iceServers: ICE_SERVERS, iceTransportPolicy: "all" });
       pc.onicecandidate = event => {
         if (event.candidate && this.localCandidates.length < 64) this.localCandidates.push(event.candidate.toJSON());
       };
@@ -114,13 +108,13 @@ export class Peer {
   }
 
   private connectionError() {
-    return `No se pudo establecer una conexión directa ni por TURN. ${this.networkNote || "Revisen sus redes y creen otra sala."}`;
+    return "No se pudo establecer una conexión directa. Revisen sus redes y creen otra sala.";
   }
 
   private async publish(description: RTCSessionDescriptionInit) {
     const pc = this.pc!;
     await pc.setLocalDescription(description);
-    // Trickle ICE: una búsqueda STUN/TURN lenta no bloquea las rutas ya disponibles.
+    // Trickle ICE: una búsqueda STUN lenta no bloquea las rutas ya disponibles.
     if (!this.closed && pc.localDescription) await this.api("signal", "POST", { type: pc.localDescription.type, sdp: pc.localDescription.sdp });
   }
 
@@ -132,7 +126,6 @@ export class Peer {
     channel.onopen = () => {
       if (this.ready || this.closed || this.fast?.readyState !== "open" || this.control?.readyState !== "open") return;
       this.markReady();
-      void this.inspectRoute().catch(() => {});
     };
     channel.onclose = () => { if (!this.closed) { if (this.ready) this.fail("La partida se cerró. Volvé para crear otra."); else this.connectionFailed = true; } };
     channel.onmessage = event => {
@@ -153,7 +146,6 @@ export class Peer {
     this.pingTimer = setInterval(() => {
       if (performance.now() - this.lastHeard > 12_000) { this.fail("El otro jugador se desconectó. Creá una nueva partida."); return; }
       this.send({ type: "ping", at: performance.now() }, true);
-      void this.inspectRoute().catch(() => {});
     }, 2000);
   }
 
@@ -162,17 +154,6 @@ export class Peer {
     if (message.type === "ping" && typeof message.at === "number") this.send({ type: "pong", at: message.at }, true);
     else if (message.type === "pong" && typeof message.at === "number") this.rtt = Math.max(0, performance.now() - message.at);
     else this.onMessage(message);
-  }
-
-  private async inspectRoute() {
-    const stats = await this.pc?.getStats();
-    stats?.forEach(report => {
-      if (report.type === "candidate-pair" && report.state === "succeeded" && report.nominated) {
-        const local = stats.get(report.localCandidateId);
-        const remote = stats.get(report.remoteCandidateId);
-        this.route = local?.candidateType === "relay" || remote?.candidateType === "relay" ? "por TURN" : "directa";
-      }
-    });
   }
 
   send(message: unknown, reliable = false) {

@@ -19,11 +19,11 @@ El indicador muestra la ida y vuelta entre ustedes. No es el tiempo de respuesta
 
 ## Cómo se conecta
 
-El alojamiento entrega la página e intercambia la oferta inicial de WebRTC. La partida usa una conexión directa entre navegadores o TURN si está configurado y WebRTC elige esa ruta. Si ninguna ruta conecta, el juego informa el error para crear otra sala. Render y Colyseus ya no forman parte del juego.
+El alojamiento entrega la página e intercambia la oferta inicial de WebRTC. La partida usa una conexión directa entre navegadores. Si no conecta, el juego informa el error para crear otra sala. Render y Colyseus ya no forman parte del juego.
 
 El creador calcula la física oficial. El invitado predice su movimiento y lo ajusta a los estados confirmados. Los gráficos sólo dibujan esa simulación: no hay dos motores distintos empujando a los personajes.
 
-La conexión directa no necesita contratar TURN. En redes restrictivas, un TURN cercano permite conservar WebRTC; si no se logra conectar, no se inicia una partida lenta por servidor. El juego avisa si falta TURN. Cambiar sólo el alojamiento de la página no reduce el ping de una partida WebRTC. Después de actualizar, ambos deben recargar y crear una sala nueva. Más detalles y opciones para Argentina en [ONLINE.md](ONLINE.md).
+La conexión directa usa STUN para descubrir rutas entre las dos redes, pero los datos del partido viajan entre los navegadores. Si una red impide esa conexión, no se inicia la partida. Cambiar sólo el alojamiento de la página no reduce el ping de una partida WebRTC. Después de actualizar, ambos deben recargar y crear una sala nueva. Más detalles en [ONLINE.md](ONLINE.md).
 
 ## Ejecutar en tu computadora
 

@@ -43,10 +43,10 @@ Se eliminaron la dirección de Render, la conexión a Colyseus y la física del 
 
 El campo usa 1024×768 unidades. Los objetos de la referencia de 800 px se escalan por 1,28 para conservar sus proporciones, y sus colisiones acompañan el dibujo. La velocidad y los tiempos son parámetros del juego, no datos de infraestructura. Están en `simulation.ts` para poder cambiarlos sin recorrer servidor y cliente.
 
-Los servidores STUN predeterminados están en `/api/config` del Worker. Se pueden reemplazar mediante `ICE_SERVERS_JSON` en el alojamiento. No agregar contraseñas al repositorio.
+Los servidores STUN están definidos en `client/src/game/peer.ts`. No se usan servidores TURN ni se envían datos de la partida mediante el Worker.
 
 ## Límites elegidos para mantenerlo simple
 
 La sala tiene dos lugares; no hay espectadores, cuentas, reconexión ni cambio de anfitrión. Recargar requiere una sala nueva. El creador debe mantener el navegador abierto y visible. Es un juego entre personas de confianza, no un sistema competitivo con protección contra trampas.
 
-La predicción reduce la espera del teclado, pero no elimina la latencia física de internet ni todas las correcciones de la pelota al chocar. En redes restrictivas, TURN permite conservar WebRTC si la conexión directa no funciona.
+La predicción reduce la espera del teclado, pero no elimina la latencia física de internet ni todas las correcciones de la pelota al chocar. Si la conexión directa no funciona en alguna de las redes, la partida no comienza.

@@ -1,7 +1,6 @@
 import { Rooms } from "./rooms";
-import { iceConfig, type IceEnv } from "./ice";
 import { isMatchMode } from "../client/src/game/match-mode";
-export type Env = { DB: D1Database; ASSETS: Fetcher } & IceEnv;
+export type Env = { DB: D1Database; ASSETS: Fetcher };
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 const token = () => crypto.randomUUID().replaceAll("-", "");
 
@@ -20,11 +19,6 @@ export default {
     }
     try {
       if (url.pathname === "/health") return json({ ok: true, transport: "webrtc" });
-      if (url.pathname === "/api/config" && request.method === "GET") {
-        return json({ iceServers: env.ICE_SERVERS_JSON ? JSON.parse(env.ICE_SERVERS_JSON) : [
-          { urls: ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"] },
-        ] });
-      }
       // API del mismo origen; el código compartido es la invitación a una partida privada.
       if (request.headers.has("Origin") && request.headers.get("Origin") !== url.origin) return json({ message: "Origen no permitido." }, 403);
       const store = new Rooms(env.DB);
@@ -43,7 +37,7 @@ export default {
         await store.create(pin, hostToken, mode);
         return json({ pin, roomId: pin, hostToken, mode }, 201);
       }
-      const match = url.pathname.match(/^\/api\/rooms\/([A-Z0-9-]+)(?:\/(join|signal|candidates|ice))?$/i);
+      const match = url.pathname.match(/^\/api\/rooms\/([A-Z0-9-]+)(?:\/(join|signal|candidates))?$/i);
       if (!match) return json({ message: "Ruta no encontrada." }, 404);
       const pin = match[1].replaceAll("-", "").toUpperCase();
       const auth = request.headers.get("Authorization")?.replace(/^Bearer /, "") || "";
@@ -57,7 +51,6 @@ export default {
         return json({ role: host ? "host" : "guest" });
       }
       if (!host && auth !== room.guest) return json({ message: "No pertenecés a esta sala." }, 403);
-      if (match[2] === "ice" && request.method === "GET") return json(await iceConfig(env));
       if (match[2] === "candidates" && request.method === "POST") {
         const raw = await request.text();
         if (raw.length > 32000) return json({ message: "Mensaje demasiado grande." }, 413);

@@ -151,7 +151,7 @@ export class Game extends Scene {
       const result = `Ganó el jugador ${this.sim.winner === 1 ? "izquierdo" : "derecho"}`;
       const message = this.confirmedFinished ? `¡Terminó el partido! ${result}` : paused ? "Partida pausada: los dos deben volver a la pestaña del juego." : this.sim.goldenGoal ? "¡Gol de oro! El próximo gol gana." : "";
       this.status.setText(message).setVisible(Boolean(message));
-      this.pingText.setText(`Conexión ${this.peer.route}: ${this.peer.rtt ? Math.round(this.peer.rtt) + " ms" : "midiendo…"} · Jugás a la ${this.peer.host ? "izquierda" : "derecha"}`);
+      this.pingText.setText(`Conexión directa: ${this.peer.rtt ? Math.round(this.peer.rtt) + " ms" : "midiendo…"} · Jugás a la ${this.peer.host ? "izquierda" : "derecha"}`);
       this.networkText.setText(this.peer.rtt > 200 ? "Demora alta: prueben cable de red y pausen las descargas en ambas casas." : "");
     }
     this.scoreText.setText(this.confirmedScore.join(" : "));

@@ -2,12 +2,11 @@
 
 ## Qué camino usa la partida
 
-La página sigue en Sites. WebRTC intenta todas las rutas (`iceTransportPolicy: all`): conexión directa y TURN si está configurado. Los candidatos ICE se envían mientras aparecen (trickle ICE), sin esperar a que todos los STUN/TURN contesten. Hay hasta 20 segundos para conectar desde que se recibe la descripción del otro jugador. Las listas de candidatos son privadas para los participantes, acumulativas y acotadas; un reintento atrasado no reemplaza una lista más nueva. Una vez conectado, el juego deja de consultar la señalización.
+La página sigue en Sites. WebRTC usa STUN para descubrir candidatos y conectar directamente los dos navegadores. Los candidatos ICE se envían mientras aparecen (trickle ICE), sin esperar a que STUN conteste. Hay hasta 20 segundos para conectar desde que se recibe la descripción del otro jugador. Las listas de candidatos son privadas para los participantes, acumulativas y acotadas; un reintento atrasado no reemplaza una lista más nueva. Una vez conectado, el juego deja de consultar la señalización.
 
 - **Directa:** teclas y estados viajan entre las casas. El alojamiento de la página no participa en esos paquetes.
-- **Por TURN:** WebRTC pasa por un repetidor; su ubicación y la ruta de ambos proveedores importan. Preferir un servicio con UDP y conservar TCP/TLS para redes que bloquean UDP.
 
-Si ninguna ruta WebRTC conecta, la partida no comienza y el juego pide crear otra sala. HTTPS sigue entregando la página y coordinando la conexión inicial.
+Si la conexión directa no funciona, la partida no comienza y el juego pide crear otra sala. HTTPS sigue entregando la página y coordinando la conexión inicial.
 
 El canal `game` no ordena ni retransmite paquetes. Si tiene datos pendientes de envío, descarta el siguiente estado para no acumular una cola de fotogramas viejos. El canal `control` es fiable para pausa, ping, resultado y revancha. El ping mide ida y vuelta entre jugadores; antes de recibirlo aparece “midiendo…”. La física oficial corre en el creador y el invitado predice su movimiento. No se promete un ping determinado ni se confunde una medición local con las dos casas.
 
@@ -19,29 +18,12 @@ El invitado tiene otra credencial. Un tercero sigue siendo rechazado. Abrir el e
 
 Ambos deben mantener la pestaña visible. Los partidos duran 60 segundos de juego y permiten revancha al aceptar los dos; los mensajes viejos de la partida anterior se descartan.
 
-## Activar TURN
+## Probar la conexión
 
-En la revisión del 12/09/2026, el sitio vinculado no tenía variables de entorno TURN. Esta actualización incorpora la integración, pero no crea una cuenta ni contrata un proveedor automáticamente.
-
-Opción gestionada: [Cloudflare Realtime TURN](https://developers.cloudflare.com/realtime/turn/). Usa su red global y selecciona una ubicación mediante anycast; no garantiza una ciudad ni un ping. En el alojamiento se configuran:
-
-- `TURN_KEY_ID`: identificador de la clave TURN.
-- `TURN_KEY_API_TOKEN`: secreto de esa clave, como variable secreta del servidor.
-
-El endpoint autenticado `/api/rooms/PIN/ice` solicita credenciales de dos horas según la [API oficial](https://developers.cloudflare.com/realtime/turn/generate-credentials/). La clave permanente nunca llega al navegador. Se incluyen STUN, TURN UDP y las alternativas TCP/TLS devueltas por el proveedor. Para sesiones de más de dos horas, creen una sala nueva; esta versión no renueva credenciales en una partida abierta. Si el proveedor falla, se conserva STUN para intentar la conexión directa y se avisa que TURN no está disponible.
-
-Para otro proveedor o un coturn propio, `ICE_SERVERS_JSON` acepta una lista estándar con `urls`, `username` y `credential`. Se suma a los STUN predeterminados para no deshabilitar accidentalmente la conexión directa. Las credenciales ICE que usa el navegador son visibles para el jugador: usar credenciales temporales o una cuenta de relay limitada, nunca una clave administrativa. No guardar secretos en Git. El endpoint anterior `/api/config` se mantiene para clientes antiguos; nunca emite la clave permanente de Cloudflare.
-
-## Elegir una conexión según la ubicación de los jugadores
-
-Primero prueben una sala nueva con ambos navegadores actualizados y miren la ruta y el ping. Si la demora es alta, revisen los proveedores, la congestión y el camino efectivamente elegido; la separación geográfica por sí sola no explica todos los problemas de conexión.
-
-Si WebRTC directo no atraviesa los NAT, las opciones son un TURN gestionado cercano o coturn en un VPS cercano a ambos jugadores. Para jugadores en Sudamérica, por ejemplo, Vultr ofrece ubicaciones en [São Paulo](https://blogs.vultr.com/Ol-Brasil-Vultrs-20th-Cloud-Location-is-in-So-Paulo) y [Santiago](https://blogs.vultr.com/Vultr-announces-new-cloud-data-center-location-in-Santiago-Chile). Hay que comparar desde ambas casas antes de contratar: el recorrido real puede ser distinto de la cercanía en el mapa. Coturn conserva el juego actual; un servidor autoritativo de juego por WebSocket en esa región requeriría otra implementación y alojamiento persistente.
-
-Mover únicamente el HTML a una región cercana no arregla el ping WebRTC. Para descartar congestión, prueben por cable, sin VPN ni descargas, y con la pestaña visible. La decisión entre conexión directa, TURN o servidor debe basarse en mediciones entre ambos jugadores.
+Prueben una sala nueva con ambos navegadores actualizados y miren el ping. Si la demora es alta, revisen los proveedores y la congestión. Mover únicamente el HTML a una región cercana no arregla el ping WebRTC. Para descartar congestión, prueben por cable, sin VPN ni descargas, y con la pestaña visible. En redes que bloquean la conexión directa, el juego informa que no pudo conectar.
 
 ## Publicar y verificar
 
 Reutilizar `.openai/hosting.json`, que identifica el sitio existente. `npm run build` genera `dist`, el Worker y las migraciones D1. La migración `0002` incorpora candidatos ICE; aplicarla al publicar junto con el cliente. No alcanza un hosting de HTML estático. Las variables de producción se gestionan en Sites y no en el manifiesto.
 
-`npm test` cubre salas y autorización con SQLite real, identidad entre pestañas, bloqueo de pestañas duplicadas, credenciales TURN con proveedor simulado, dos conexiones WebRTC reales y el error cuando WebRTC falla. `npm run build` verifica los tipos y prepara la publicación. El proveedor TURN real y las redes de las dos casas requieren una prueba posterior con credenciales válidas.
+`npm test` cubre salas y autorización con SQLite real, identidad entre pestañas, bloqueo de pestañas duplicadas, dos conexiones WebRTC reales y el error cuando WebRTC falla. `npm run build` verifica los tipos y prepara la publicación. Las redes de las dos casas requieren una prueba posterior.

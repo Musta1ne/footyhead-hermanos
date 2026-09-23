@@ -16,12 +16,15 @@ test("dos Peer reales abren ambos canales y juegan aunque se apague la señaliza
   Object.defineProperty(globalThis, "sessionStorage", { configurable: true, value: { getItem: (k: string) => storage.get(k), setItem: (k: string, v: string) => storage.set(k, v) } });
   // Werift implementa WebRTC (ICE + DTLS + SCTP) con sockets reales, sin abrir una UI.
   globalThis.RTCPeerConnection = class extends RTCPeerConnection {
-    constructor() { super({ iceServers: [], iceUseIpv6: false }); }
+    constructor(config: RTCConfiguration) {
+      assert.ok(config.iceServers?.some(server => String(server.urls).includes("stun:")));
+      assert.ok(config.iceServers?.every(server => !String(server.urls).includes("turn:")));
+      super({ iceServers: [], iceUseIpv6: false });
+    }
   } as any;
   globalThis.fetch = async (url, options) => {
     signalingCalls++;
     if (signalingOff) throw new Error("Alojamiento apagado durante la partida");
-    if (String(url).endsWith("/ice")) return Response.json({ iceServers: [] });
     const auth = new Headers(options?.headers).get("Authorization")?.slice(7);
     const host = auth === hostToken;
     if (String(url).endsWith("/candidates")) {

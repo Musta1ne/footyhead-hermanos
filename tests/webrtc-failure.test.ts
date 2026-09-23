@@ -24,7 +24,6 @@ test("si WebRTC falla, informa el error sin enviar la partida por HTTPS", { time
   globalThis.fetch = async (url, options) => {
     const path = String(url);
     requests.push(path);
-    if (path.endsWith("/ice")) return Response.json({ iceServers: [], turnAvailable: false });
     const side = new Headers(options?.headers).get("Authorization") === `Bearer ${"1".repeat(32)}` ? 0 : 1;
     if (path.endsWith("/join")) return Response.json({ role: side === 0 ? "host" : "guest" });
     if (path.endsWith("/signal")) {
@@ -43,7 +42,7 @@ test("si WebRTC falla, informa el error sin enviar la partida por HTTPS", { time
     assert.equal(host.ready, false);
     assert.equal(guest.ready, false);
     assert.equal(errors.length, 2);
-    assert.ok(errors.every(error => error.includes("conexión directa ni por TURN")));
+    assert.ok(errors.every(error => error.includes("conexión directa")));
     assert.ok(requests.every(path => !path.endsWith("/relay")));
   } finally {
     host.close(); guest.close(); globalThis.fetch = originalFetch; globalThis.RTCPeerConnection = originalRTC;

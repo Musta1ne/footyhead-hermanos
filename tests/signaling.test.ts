@@ -47,10 +47,8 @@ test("sala real en SQLite: roles, tercero rechazado, señal privada y vencimient
   assert.equal((await request(`/api/rooms/${pin}/join`, "POST", "a".repeat(32))).status, 409);
   assert.equal((await request(`/api/rooms/${pin}/signal`)).status, 401);
   assert.equal((await request(`/api/rooms/${pin}/signal`, "GET", "a".repeat(32))).status, 403);
-  assert.equal((await request(`/api/rooms/${pin}/ice`, "GET", "a".repeat(32))).status, 403);
-  const ice = await (await request(`/api/rooms/${pin}/ice`, "GET", hostToken)).json() as any;
-  assert.equal(ice.turnAvailable, false);
-  assert.ok(ice.iceServers[0].urls.some((url: string) => url.startsWith("stun:")));
+  assert.equal((await request(`/api/rooms/${pin}/ice`, "GET", hostToken)).status, 404);
+  assert.equal((await request("/api/config")).status, 404);
   // Volver desde otra pestaña con la credencial conservada no ocupa al invitado.
   assert.equal((await (await request(`/api/rooms/${pin}/join`, "POST", hostToken)).json() as any).role, "host");
   assert.equal((await (await request(`/api/rooms/${pin}/join`, "POST", guest)).json() as any).role, "guest");
