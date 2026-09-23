@@ -147,6 +147,7 @@ no puede expulsarla por debajo del techo del arco y generar un gol desde arriba.
 Un jugador apoyado sobre el travesaño se desliza hacia la cancha hasta caer,
 incluso si mantiene la direccion hacia la pared. `roofSlide` viaja en cada
 snapshot para que el anfitrion y el invitado continuen el mismo deslizamiento.
+El travesaño no habilita un salto, incluso si se mantiene pulsada la tecla.
 
 La fisica de la pelota es explicita, pero esto no convierte todo el juego en un
 lockstep determinista entre maquinas. Se conserva el anfitrion autoritativo,

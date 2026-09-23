@@ -440,7 +440,7 @@ test("mantener salto repite al aterrizar y pulsarlo en el aire no da doble salto
   } finally { sim.destroy(); }
 });
 
-test("se puede saltar apoyado en el travesaño o en el rival", () => {
+test("no se puede saltar apoyado en el travesaño, pero sí en el rival", () => {
   for (const support of ["bar", "player"]) {
     const sim = new Simulation();
     try {
@@ -456,7 +456,8 @@ test("se puede saltar apoyado en el travesaño o en el rival", () => {
       }
       for (let i = 0; i < (support === "bar" ? 2 : 30); i++) sim.step(emptyInput(), emptyInput());
       sim.step({ ...emptyInput(), jump: 1 }, emptyInput());
-      assert.ok(sim.players[0].velocity.y < -4, support);
+      if (support === "bar") assert.ok(sim.players[0].velocity.y > -2, "no salta desde el travesaño");
+      else assert.ok(sim.players[0].velocity.y < -4, "salta desde el rival");
     } finally { sim.destroy(); }
   }
 });
@@ -540,8 +541,8 @@ test("la pelota atrapada entre pared y jugador no atraviesa el techo del arco", 
   }
 });
 
-test("un jugador sobre el arco se desliza de vuelta a la cancha", () => {
-  for (const side of [1, -1] as const) for (const heldTowardWall of [false, true]) {
+test("un jugador sobre el arco se desliza de vuelta a la cancha aunque mantenga salto", () => {
+  for (const side of [1, -1] as const) for (const heldTowardWall of [false, true]) for (const heldJump of [false, true]) {
     const sim = new Simulation("practice");
     try {
       teleportPlayer(sim, side === 1 ? 0 : 1, {
@@ -552,12 +553,12 @@ test("un jugador sobre el arco se desliza de vuelta a la cancha", () => {
       Matter.Body.setVelocity(sim.ball, { x: 0, y: 0 });
       const towardWall = { ...emptyInput(), direction: -side as -1 | 1 };
       for (let tick = 0; tick < 90; tick++) {
-        const input = heldTowardWall ? towardWall : emptyInput();
+        const input = { ...(heldTowardWall ? towardWall : emptyInput()), jump: heldJump ? 1 : 0, jumpHeld: heldJump };
         sim.step(side === 1 ? input : emptyInput(), side === -1 ? input : emptyInput());
       }
       const player = sim.players[side === 1 ? 0 : 1];
       assert.ok(player.position.y > RULES.goalTop + RULES.playerRadius,
-        `el jugador quedó encima del arco ${side}, dirección a la pared: ${heldTowardWall}`);
+        `el jugador quedó encima del arco ${side}, dirección a la pared: ${heldTowardWall}, salto: ${heldJump}`);
     } finally { sim.destroy(); }
   }
 });

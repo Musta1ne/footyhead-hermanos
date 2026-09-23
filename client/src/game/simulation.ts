@@ -111,6 +111,10 @@ export class Simulation {
   ballRotation = 0;
   ballRollMs = 0;
   roofSlide: [boolean, boolean] = [false, false];
+  private goalRoofs = [
+    Bodies.rectangle(RULES.goalWidth / 2, RULES.goalTop, RULES.goalWidth, 5 * VISUAL_SCALE, { isStatic: true, angle: 0.05, restitution: RULES.wallRestitution }),
+    Bodies.rectangle(1024 - RULES.goalWidth / 2, RULES.goalTop, RULES.goalWidth, 5 * VISUAL_SCALE, { isStatic: true, angle: -0.05, restitution: RULES.wallRestitution }),
+  ];
   tick = 0;
   match = 0;
   remainingTicks: number;
@@ -156,8 +160,7 @@ export class Simulation {
       Bodies.rectangle(1034, 300, 20, 768, { isStatic: true, restitution: RULES.wallRestitution }),
       Bodies.rectangle(512, -10, 1024, 20, { isStatic: true, restitution: RULES.wallRestitution }),
       Bodies.rectangle(512, 600, 1024, 20, { isStatic: true, friction: 0.3 }),
-      Bodies.rectangle(RULES.goalWidth / 2, RULES.goalTop, RULES.goalWidth, 5 * VISUAL_SCALE, { isStatic: true, angle: 0.05, restitution: RULES.wallRestitution }),
-      Bodies.rectangle(1024 - RULES.goalWidth / 2, RULES.goalTop, RULES.goalWidth, 5 * VISUAL_SCALE, { isStatic: true, angle: -0.05, restitution: RULES.wallRestitution }),
+      ...this.goalRoofs,
     ]);
     this.serve();
   }
@@ -273,6 +276,7 @@ export class Simulation {
   private supported(player: Matter.Body) {
     if (Math.abs(player.velocity.y) > 0.75) return false;
     const surfaces = Composite.allBodies(this.engine.world).filter(body => body !== player && body !== this.ball
+      && !this.goalRoofs.includes(body)
       && body.collisionFilter.group !== player.collisionFilter.group && body.bounds.min.y > player.position.y);
     const foot = { x: player.position.x, y: player.bounds.max.y - 1 };
     return Query.ray(surfaces, foot, { x: foot.x, y: foot.y + 3 }, 4).length > 0;
