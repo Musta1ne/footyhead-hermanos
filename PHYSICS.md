@@ -141,6 +141,13 @@ con el rival incluso recogidas. Tienen masa finita, amortiguacion torsional y
 un pivote fisico al jugador, asi que su estado de posicion, velocidad, angulo y giro es
 parte de la dinamica observable.
 
+En la esquina entre la pared, la cabeza y el travesaño, la pelota conserva la
+cara superior de contacto durante cada subpaso. Asi, la separacion de la cabeza
+no puede expulsarla por debajo del techo del arco y generar un gol desde arriba.
+Un jugador apoyado sobre el travesaño se desliza hacia la cancha hasta caer,
+incluso si mantiene la direccion hacia la pared. `roofSlide` viaja en cada
+snapshot para que el anfitrion y el invitado continuen el mismo deslizamiento.
+
 La fisica de la pelota es explicita, pero esto no convierte todo el juego en un
 lockstep determinista entre maquinas. Se conserva el anfitrion autoritativo,
 la prediccion y la restauracion de snapshots. `boots` serializa el estado

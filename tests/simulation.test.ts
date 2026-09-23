@@ -454,7 +454,7 @@ test("se puede saltar apoyado en el travesaño o en el rival", () => {
         // rival at the exact overlap point would legitimately push it away.
         sim.boots[0].collisionFilter.mask = 0;
       }
-      for (let i = 0; i < 30; i++) sim.step(emptyInput(), emptyInput());
+      for (let i = 0; i < (support === "bar" ? 2 : 30); i++) sim.step(emptyInput(), emptyInput());
       sim.step({ ...emptyInput(), jump: 1 }, emptyInput());
       assert.ok(sim.players[0].velocity.y < -4, support);
     } finally { sim.destroy(); }
@@ -516,6 +516,76 @@ test("el pie describe una órbita, queda arriba y vuelve al reposo al soltar", (
       assert.ok(sim.feet[index].lift < partial);
     } finally { sim.destroy(); }
   }
+});
+
+test("la pelota atrapada entre pared y jugador no atraviesa el techo del arco", () => {
+  for (const side of [1, -1] as const) {
+    const sim = new Simulation("practice");
+    try {
+      const playerX = side === 1 ? 54 : 1024 - 54;
+      const ballX = side === 1 ? 18 : 1024 - 18;
+      teleportPlayer(sim, side === 1 ? 0 : 1, {
+        x: playerX, y: RULES.goalTop - RULES.playerRadius - 3,
+      });
+      Matter.Body.setPosition(sim.ball, { x: ballX, y: RULES.goalTop - RULES.ballRadius - 3 });
+      Matter.Body.setVelocity(sim.ball, { x: 0, y: 0 });
+      const towardWall = { ...emptyInput(), direction: -side as -1 | 1 };
+      for (let tick = 0; tick < 45; tick++) {
+        sim.step(side === 1 ? towardWall : emptyInput(), side === -1 ? towardWall : emptyInput());
+        assert.ok(sim.ball.position.y + RULES.ballRadius <= RULES.goalTop + 3,
+          `la pelota cruzó el techo del arco ${side} en el paso ${tick}: y=${sim.ball.position.y}`);
+      }
+      assert.equal(sim.round, 0, `gol por encima del arco ${side}`);
+    } finally { sim.destroy(); }
+  }
+});
+
+test("un jugador sobre el arco se desliza de vuelta a la cancha", () => {
+  for (const side of [1, -1] as const) for (const heldTowardWall of [false, true]) {
+    const sim = new Simulation("practice");
+    try {
+      teleportPlayer(sim, side === 1 ? 0 : 1, {
+        x: side === 1 ? RULES.goalWidth / 2 : 1024 - RULES.goalWidth / 2,
+        y: RULES.goalTop - RULES.playerRadius - 3,
+      });
+      Matter.Body.setPosition(sim.ball, { x: 512, y: 500 });
+      Matter.Body.setVelocity(sim.ball, { x: 0, y: 0 });
+      const towardWall = { ...emptyInput(), direction: -side as -1 | 1 };
+      for (let tick = 0; tick < 90; tick++) {
+        const input = heldTowardWall ? towardWall : emptyInput();
+        sim.step(side === 1 ? input : emptyInput(), side === -1 ? input : emptyInput());
+      }
+      const player = sim.players[side === 1 ? 0 : 1];
+      assert.ok(player.position.y > RULES.goalTop + RULES.playerRadius,
+        `el jugador quedó encima del arco ${side}, dirección a la pared: ${heldTowardWall}`);
+    } finally { sim.destroy(); }
+  }
+});
+
+test("la instantánea conserva el deslizamiento del jugador desde el arco", () => {
+  const host = new Simulation("practice"), guest = new Simulation("practice");
+  try {
+    teleportPlayer(host, 0, {
+      x: RULES.goalWidth / 2, y: RULES.goalTop - RULES.playerRadius - 3,
+    });
+    Matter.Body.setPosition(host.ball, { x: 512, y: 500 });
+    Matter.Body.setVelocity(host.ball, { x: 0, y: 0 });
+    const towardWall = { ...emptyInput(), direction: -1 as const };
+    for (let tick = 0; tick < 15; tick++) host.step(towardWall, emptyInput());
+    assert.equal(host.roofSlide[0], true);
+    guest.restore(host.snapshot());
+    for (let tick = 0; tick < 75; tick++) {
+      host.step(towardWall, emptyInput());
+      guest.step(towardWall, emptyInput());
+    }
+    assert.ok(host.players[0].position.y > RULES.goalTop + RULES.playerRadius);
+    const actual = guest.snapshot(), expected = host.snapshot();
+    assert.deepEqual(actual.roofSlide, expected.roofSlide);
+    assert.equal(actual.round, expected.round);
+    for (const [a, b] of [[actual.players[0], expected.players[0]], [actual.ball, expected.ball]]) {
+      assert.ok(Math.abs(a.x - b.x) < 0.001 && Math.abs(a.y - b.y) < 0.001);
+    }
+  } finally { host.destroy(); guest.destroy(); }
 });
 
 test("con empate al terminar el minuto, el próximo gol decide", () => {

@@ -38,6 +38,7 @@ export type Snapshot = {
   players: [BodyState, BodyState]; ball: BodyState;
   inputs: [Input, Input]; kicks: [number, number]; feet: [FootState, FootState];
   boots: [BodyState, BodyState]; ballRotation: number; ballRollMs: number;
+  roofSlide: [boolean, boolean];
 };
 const { Engine, Bodies, Body, Composite, Constraint, Query } = Matter;
 
@@ -109,6 +110,7 @@ export class Simulation {
   });
   ballRotation = 0;
   ballRollMs = 0;
+  roofSlide: [boolean, boolean] = [false, false];
   tick = 0;
   match = 0;
   remainingTicks: number;
@@ -180,6 +182,7 @@ export class Simulation {
     this.feet = [{ lift: 0, tapTicks: 0 }, { lift: 0, tapTicks: 0 }];
     this.ballRotation = 0;
     this.ballRollMs = 0;
+    this.roofSlide = [false, false];
     this.rebuildBootPivots();
     // No reutilizar contactos de la posición anterior después de un gol.
     this.resetCollisions();
@@ -213,6 +216,24 @@ export class Simulation {
           x: this.boots[i].velocity.x,
           y: this.boots[i].velocity.y + RULES.jump,
         });
+      }
+      // Al apoyar sobre el travesaño, el jugador sigue deslizándose hacia la
+      // cancha hasta salir del borde y caer, aunque mantenga dirección a la pared.
+      const leftGoal = player.position.x < 512;
+      const goalEdge = leftGoal ? RULES.goalWidth : 1024 - RULES.goalWidth;
+      const slide = leftGoal ? 1 : -1;
+      const center = leftGoal ? RULES.goalWidth / 2 : 1024 - RULES.goalWidth / 2;
+      const angle = leftGoal ? 0.05 : -0.05;
+      const roofY = RULES.goalTop + Math.tan(angle) * (player.position.x - center) - 2.5 * VISUAL_SCALE / Math.cos(angle);
+      if (player.velocity.y < -2 || player.position.y > RULES.goalTop + RULES.playerRadius) {
+        this.roofSlide[i] = false;
+      } else if ((player.position.x - goalEdge) * slide <= RULES.playerRadius
+        && Math.abs(player.position.y + RULES.playerRadius - roofY) < 5
+        && Math.abs(player.velocity.y) < 0.75) {
+        this.roofSlide[i] = true;
+      }
+      if (this.roofSlide[i] && player.velocity.x * slide < 2.5) {
+        Body.setVelocity(player, { x: slide * 2.5, y: player.velocity.y });
       }
       if (input.kick > this.inputs[i].kick || (input.kickHeld && !this.inputs[i].kickHeld)) {
         this.kicks[i] = this.tick;
@@ -300,6 +321,7 @@ export class Simulation {
   private stepBall() {
     const dt = 1 / RULES.substeps, radius = RULES.ballRadius;
     let { x, y } = this.ball.position;
+    const previous = { x, y };
     const damping = RULES.ballDamping ** dt;
     let vx = this.ball.velocity.x * damping;
     let vy = (this.ball.velocity.y + RULES.ballGravity * dt) * damping;
@@ -347,6 +369,16 @@ export class Simulation {
     // Las barras conservan su inclinación visual: círculo contra caja en su espacio local.
     for (const [cx, angle] of [[RULES.goalWidth / 2, 0.05], [1024 - RULES.goalWidth / 2, -0.05]]) {
       const cos = Math.cos(angle), sin = Math.sin(angle), dx = x - cx, dy = y - RULES.goalTop;
+      const localX = dx * cos + dy * sin;
+      const previousAbove = (previous.x - cx) * sin - (previous.y - RULES.goalTop) * cos >= 0;
+      if (previousAbove && Math.abs(localX) <= RULES.goalWidth / 2) {
+        // Una cabeza puede empujar la pelota más allá del centro de la barra
+        // en este subpaso. Conservar la cara de entrada impide que la caja
+        // la expulse por debajo y produzca un gol desde arriba.
+        const depth = radius + 2.5 * VISUAL_SCALE - (dx * sin - dy * cos);
+        if (depth > 0) contact(sin, -cos, depth, RULES.wallRestitution);
+        continue;
+      }
       const hit = circleBox(dx * cos + dy * sin, -dx * sin + dy * cos, radius, RULES.goalWidth / 2, 2.5 * VISUAL_SCALE);
       if (hit) contact(hit.nx * cos - hit.ny * sin, hit.nx * sin + hit.ny * cos, hit.depth, RULES.wallRestitution);
     }
@@ -391,7 +423,7 @@ export class Simulation {
       players: [body(this.players[0]), body(this.players[1])], ball: body(this.ball),
       inputs: [{ ...this.inputs[0] }, { ...this.inputs[1] }], kicks: [...this.kicks],
       feet: [{ ...this.feet[0] }, { ...this.feet[1] }], boots: [body(this.boots[0]), body(this.boots[1])],
-      ballRotation: this.ballRotation, ballRollMs: this.ballRollMs };
+      ballRotation: this.ballRotation, ballRollMs: this.ballRollMs, roofSlide: [...this.roofSlide] };
   }
 
   restore(state: Snapshot) {
@@ -408,6 +440,7 @@ export class Simulation {
     this.feet = [{ ...state.feet[0] }, { ...state.feet[1] }];
     this.ballRotation = state.ballRotation;
     this.ballRollMs = state.ballRollMs;
+    this.roofSlide = [...state.roofSlide];
     this.players.forEach((p, i) => body(p, state.players[i]));
     this.boots.forEach((boot, i) => body(boot, state.boots[i]));
     body(this.ball, state.ball);
