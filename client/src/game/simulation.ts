@@ -1,6 +1,7 @@
 import Matter from "matter-js";
 import { ARENA_SLOPES, PITCH_FLOOR_Y, REFERENCE_VISUALS, VISUAL_SCALE } from "./visual-proportions";
 import type { MatchMode } from "./match-mode";
+import { POWERUP_RULES, POWERUP_TYPES, effectGroup, type ActiveEffect, type Powerup, type PowerupType } from "./powerups";
 
 // Única definición de las reglas: anfitrión y predicción usan la misma física.
 export const RULES = {
@@ -39,17 +40,19 @@ export type Snapshot = {
   inputs: [Input, Input]; kicks: [number, number]; feet: [FootState, FootState];
   boots: [BodyState, BodyState]; ballRotation: number; ballRollMs: number;
   roofSlide: [boolean, boolean];
+  powerups: Powerup[]; effects: ActiveEffect[]; lastTouch: Team | null;
+  spawnClock: number; nextPowerupId: number; randomState: number; playerScales: [number, number];
 };
 const { Engine, Bodies, Body, Composite, Constraint, Query } = Matter;
 
 // lift=0: reposo; lift=1: pie levantado. La órbita no atraviesa la cabeza.
 // Dibujo y cuerpo sólido usan exactamente la misma posición.
-export function bootPose(team: Team, lift: number) {
+export function bootPose(team: Team, lift: number, scale = 1) {
   // La referencia original barre desde atrás y abajo del cuerpo hasta delante,
   // a la altura de su centro; ambos lados usan exactamente el mismo espejo.
   const orbitAngle = RULES.bootRestAngle + (Math.PI - RULES.bootRestAngle) * lift;
   const side = team === 1 ? 1 : -1;
-  return { x: -side * Math.cos(orbitAngle) * RULES.bootOrbit, y: Math.sin(orbitAngle) * RULES.bootOrbit, angle: side * (-1.3 - (Math.PI - RULES.bootRestAngle) * lift) };
+  return { x: -side * Math.cos(orbitAngle) * RULES.bootOrbit * scale, y: Math.sin(orbitAngle) * RULES.bootOrbit * scale, angle: side * (-1.3 - (Math.PI - RULES.bootRestAngle) * lift) };
 }
 
 const COLLISION = { world: 1, head: 2, ball: 4, foot: 8 };
@@ -111,6 +114,13 @@ export class Simulation {
   ballRotation = 0;
   ballRollMs = 0;
   roofSlide: [boolean, boolean] = [false, false];
+  powerups: Powerup[] = [];
+  effects: ActiveEffect[] = [];
+  lastTouch: Team | null = null;
+  spawnClock = 0;
+  nextPowerupId = 1;
+  randomState: number;
+  playerScales: [number, number] = [1, 1];
   private goalRoofs = [
     Bodies.rectangle(RULES.goalWidth / 2, RULES.goalTop, RULES.goalWidth, 5 * VISUAL_SCALE, { isStatic: true, angle: 0.05, restitution: RULES.wallRestitution }),
     Bodies.rectangle(1024 - RULES.goalWidth / 2, RULES.goalTop, RULES.goalWidth, 5 * VISUAL_SCALE, { isStatic: true, angle: -0.05, restitution: RULES.wallRestitution }),
@@ -122,10 +132,30 @@ export class Simulation {
   winner: Team | null = null;
   get finished() { return this.winner !== null; }
   get goldenGoal() { return this.mode === "timed" && this.remainingTicks === 0 && !this.finished && this.score[0] === this.score[1]; }
+  goalScale(team: Team) {
+    const type = this.effects.find(effect => effect.target === team && effectGroup(effect.type) === "goal")?.type;
+    return type === "goal-big" ? POWERUP_RULES.goalBig : type === "goal-small" ? POWERUP_RULES.goalSmall : 1;
+  }
+  goalTop(team: Team) { return PITCH_FLOOR_Y - REFERENCE_VISUALS.goal.height * VISUAL_SCALE * this.goalScale(team); }
+  private goalScoreY(team: Team) { return this.goalTop(team) + (RULES.goalScoreY - RULES.goalTop); }
+  private effectFor(team: Team, group: ReturnType<typeof effectGroup>) {
+    return this.effects.find(effect => effect.target === team && effectGroup(effect.type) === group)?.type;
+  }
+  private playerSpeed(team: Team) {
+    const type = this.effectFor(team, "speed");
+    return RULES.speed * (type === "speed-up" ? POWERUP_RULES.speedUp : type === "speed-down" ? POWERUP_RULES.speedDown : 1);
+  }
+  private playerJump(team: Team) {
+    const type = this.effectFor(team, "jump");
+    return RULES.jump * (type === "jump-up" ? POWERUP_RULES.jumpUp : type === "jump-down" ? POWERUP_RULES.jumpDown : 1);
+  }
+  private frozen(team: Team) { return this.effectFor(team, "ice") !== undefined; }
+  private cannotKick(team: Team) { return this.frozen(team) || this.effectFor(team, "leg") !== undefined; }
 
   private resolveTimedWinner() {
-    if (this.mode !== "timed" || this.remainingTicks !== 0 || this.score[0] === this.score[1]) return;
+    if (this.finished || this.mode !== "timed" || this.remainingTicks !== 0 || this.score[0] === this.score[1]) return;
     this.winner = this.score[0] > this.score[1] ? 1 : 2;
+    this.clearPowerupsAndEffects();
   }
 
   requestRematch(team: Team, match: number) {
@@ -151,8 +181,9 @@ export class Simulation {
   inputs: [Input, Input] = [emptyInput(), emptyInput()];
   kicks: [number, number] = [-100, -100];
 
-  constructor(mode: MatchMode = "timed") {
+  constructor(mode: MatchMode = "timed", seed = 1) {
     this.mode = mode;
+    this.randomState = seed >>> 0 || 1;
     this.remainingTicks = mode === "timed" ? RULES.matchTicks : 0;
     Composite.add(this.engine.world, [
       ...this.players, ...this.boots, ...this.bootPivots,
@@ -166,6 +197,7 @@ export class Simulation {
   }
 
   private serve() {
+    this.clearPowerupsAndEffects();
     this.players.forEach((p, i) => {
       Body.setPosition(p, { x: i === 0 ? 200 : 824, y: 550 });
       Body.setVelocity(p, { x: 0, y: 0 });
@@ -191,6 +223,112 @@ export class Simulation {
     this.resetCollisions();
   }
 
+  private clearPowerupsAndEffects() {
+    this.powerups = [];
+    this.effects = [];
+    this.lastTouch = null;
+    this.spawnClock = 0;
+    this.players.forEach((_, i) => this.resizePlayer(i, 1));
+    this.updateGoalRoofs();
+  }
+
+  private resizePlayer(index: number, scale: number) {
+    const previous = this.playerScales[index];
+    if (previous === scale) return;
+    const ratio = scale / previous;
+    const player = this.players[index], boot = this.boots[index];
+    const bottom = player.position.y + RULES.playerRadius * previous;
+    const bootOffset = { x: boot.position.x - player.position.x, y: boot.position.y - player.position.y };
+    Body.scale(player, ratio, ratio);
+    Body.scale(boot, ratio, ratio);
+    Body.setPosition(player, { x: player.position.x, y: bottom - RULES.playerRadius * scale });
+    Body.setPosition(boot, { x: player.position.x + bootOffset.x * ratio, y: player.position.y + bootOffset.y * ratio });
+    this.playerScales[index] = scale;
+    this.rebuildBootPivots();
+    this.resetCollisions();
+  }
+
+  private updateGoalRoofs() {
+    this.goalRoofs.forEach((roof, i) => Body.setPosition(roof, { x: roof.position.x, y: this.goalTop(i === 0 ? 1 : 2) }));
+  }
+
+  grantPowerup(type: PowerupType, collector: Team) {
+    const target: Team = type === "ice-opponent" || type === "leg-opponent" || type.startsWith("goal-")
+      ? (collector === 1 ? 2 : 1) : collector;
+    const group = effectGroup(type);
+    this.effects = this.effects.filter(effect => effect.target !== target || effectGroup(effect.type) !== group);
+    this.effects.push({ type, target, remainingTicks: POWERUP_RULES.effectTicks });
+    if (group === "size") this.resizePlayer(target - 1, type === "grow" ? POWERUP_RULES.grow : POWERUP_RULES.shrink);
+    if (group === "goal") this.updateGoalRoofs();
+    if (group === "ice") Body.setVelocity(this.players[target - 1], { x: 0, y: this.players[target - 1].velocity.y });
+    if (group === "ice" || group === "leg") this.feet[target - 1].tapTicks = 0;
+  }
+
+  private advanceEffects() {
+    const expired = this.effects.filter(effect => effect.remainingTicks <= 1);
+    this.effects = this.effects.filter(effect => effect.remainingTicks > 1).map(effect => ({ ...effect, remainingTicks: effect.remainingTicks - 1 }));
+    for (const effect of expired) {
+      if (effectGroup(effect.type) === "size") this.resizePlayer(effect.target - 1, 1);
+      if (effectGroup(effect.type) === "goal") this.updateGoalRoofs();
+    }
+  }
+
+  private random() {
+    let value = this.randomState;
+    value ^= value << 13; value ^= value >>> 17; value ^= value << 5;
+    this.randomState = value >>> 0 || 1;
+    return this.randomState / 0x100000000;
+  }
+
+  private spawnPowerup() {
+    if (this.powerups.length >= POWERUP_RULES.maxVisible) return;
+    const radius = POWERUP_RULES.radius;
+    const minX = radius + 5, maxX = 1024 - minX;
+    const minY = radius + 8, maxY = PITCH_FLOOR_Y - radius - 8;
+    for (let attempt = 0; attempt < 40; attempt++) {
+      const x = minX + this.random() * (maxX - minX), y = minY + this.random() * (maxY - minY);
+      const clear = (body: Matter.Body, distance: number) => Math.hypot(x - body.position.x, y - body.position.y) > distance;
+      const insideArena = ARENA_SLOPES.every(([start, end]) => {
+        const dx = end.x - start.x, dy = end.y - start.y;
+        return ((x - start.x) * dy - (y - start.y) * dx) / Math.hypot(dx, dy) >= radius + 5;
+      });
+      if ((x < RULES.goalWidth + radius && y < this.goalTop(1) + radius + 5)
+        || (x > 1024 - RULES.goalWidth - radius && y < this.goalTop(2) + radius + 5)
+        || !insideArena
+        || (x > 365 && x < 659 && y > 175 && y < 245)
+        || (x > 430 && x < 594 && y < 65)
+        || !clear(this.ball, radius + RULES.ballRadius + 5)
+        || this.players.some((body, i) => !clear(body, radius + RULES.playerRadius * this.playerScales[i] + 5))
+        || this.boots.some((body, i) => !clear(body, radius + Math.hypot(RULES.bootWidth, RULES.bootHeight) * this.playerScales[i] / 2 + 5))
+        || this.powerups.some(item => Math.hypot(x - item.x, y - item.y) < radius * 2 + 5)) continue;
+      const type = POWERUP_TYPES[Math.floor(this.random() * POWERUP_TYPES.length)];
+      this.powerups.push({ id: this.nextPowerupId++, type, x, y, remainingTicks: POWERUP_RULES.lifeTicks });
+      return;
+    }
+  }
+
+  private advancePowerups() {
+    const expired = this.powerups.filter(item => item.remainingTicks <= 1).length;
+    this.powerups = this.powerups.filter(item => item.remainingTicks > 1).map(item => ({ ...item, remainingTicks: item.remainingTicks - 1 }));
+    for (let i = 0; i < expired; i++) this.spawnPowerup();
+    this.spawnClock++;
+    if (this.spawnClock >= POWERUP_RULES.spawnTicks) {
+      this.spawnClock = 0;
+      this.spawnPowerup();
+    }
+  }
+
+  private collectPowerups() {
+    if (this.lastTouch === null) return;
+    const radius = RULES.ballRadius + POWERUP_RULES.radius;
+    const remaining: Powerup[] = [];
+    for (const item of this.powerups) {
+      if (Math.hypot(this.ball.position.x - item.x, this.ball.position.y - item.y) <= radius) this.grantPowerup(item.type, this.lastTouch);
+      else remaining.push(item);
+    }
+    this.powerups = remaining;
+  }
+
   step(one: Input, two: Input) {
     if (this.finished) return;
     this.tick++;
@@ -206,18 +344,23 @@ export class Simulation {
     }
     next.forEach((input, i) => {
       const player = this.players[i];
-      const target = input.direction * RULES.speed;
-      let vx = input.direction === 0 ? player.velocity.x * RULES.releaseDrag
-        : player.velocity.x + Math.max(-RULES.acceleration, Math.min(RULES.acceleration, target - player.velocity.x));
+      const team: Team = i === 0 ? 1 : 2;
+      const speed = this.playerSpeed(team);
+      const acceleration = RULES.acceleration * speed / RULES.speed;
+      const target = input.direction * speed;
+      let vx = this.frozen(team) ? 0 : input.direction === 0 ? player.velocity.x * RULES.releaseDrag
+        : player.velocity.x + Math.max(-acceleration, Math.min(acceleration, target - player.velocity.x));
+      vx = Math.max(-speed, Math.min(speed, vx));
       if (Math.abs(vx) < 0.03) vx = 0;
       Body.setVelocity(player, { x: vx, y: player.velocity.y });
       if ((input.jump > this.inputs[i].jump || input.jumpHeld) && this.supported(player)) {
-        Body.setVelocity(player, { x: player.velocity.x, y: RULES.jump });
+        const jump = this.playerJump(team);
+        Body.setVelocity(player, { x: player.velocity.x, y: jump });
         // Launch the attached finite-mass boot with the same delta-V. The
         // pin then keeps the pair together without stealing the jump impulse.
         Body.setVelocity(this.boots[i], {
           x: this.boots[i].velocity.x,
-          y: this.boots[i].velocity.y + RULES.jump,
+          y: this.boots[i].velocity.y + jump,
         });
       }
       // Al apoyar sobre el travesaño, el jugador sigue deslizándose hacia la
@@ -227,18 +370,20 @@ export class Simulation {
       const slide = leftGoal ? 1 : -1;
       const center = leftGoal ? RULES.goalWidth / 2 : 1024 - RULES.goalWidth / 2;
       const angle = leftGoal ? 0.05 : -0.05;
-      const roofY = RULES.goalTop + Math.tan(angle) * (player.position.x - center) - 2.5 * VISUAL_SCALE / Math.cos(angle);
-      if (player.velocity.y < -2 || player.position.y > RULES.goalTop + RULES.playerRadius) {
+      const goalTop = this.goalTop(leftGoal ? 1 : 2);
+      const playerRadius = RULES.playerRadius * this.playerScales[i];
+      const roofY = goalTop + Math.tan(angle) * (player.position.x - center) - 2.5 * VISUAL_SCALE / Math.cos(angle);
+      if (player.velocity.y < -2 || player.position.y > goalTop + playerRadius) {
         this.roofSlide[i] = false;
-      } else if ((player.position.x - goalEdge) * slide <= RULES.playerRadius
-        && Math.abs(player.position.y + RULES.playerRadius - roofY) < 5
+      } else if ((player.position.x - goalEdge) * slide <= playerRadius
+        && Math.abs(player.position.y + playerRadius - roofY) < 5
         && Math.abs(player.velocity.y) < 0.75) {
         this.roofSlide[i] = true;
       }
       if (this.roofSlide[i] && player.velocity.x * slide < 2.5) {
         Body.setVelocity(player, { x: slide * 2.5, y: player.velocity.y });
       }
-      if (input.kick > this.inputs[i].kick || (input.kickHeld && !this.inputs[i].kickHeld)) {
+      if (!this.cannotKick(team) && (input.kick > this.inputs[i].kick || (input.kickHeld && !this.inputs[i].kickHeld))) {
         this.kicks[i] = this.tick;
         // Una pulsación que ocurrió entre dos fotogramas sigue siendo útil.
         // Una tecla sostenida, en cambio, baja apenas llega su liberación.
@@ -247,19 +392,34 @@ export class Simulation {
     });
     this.inputs = [{ ...one }, { ...two }];
     for (let substep = 0; substep < RULES.substeps; substep++) {
+      const frozenX = this.players.map((player, i) => this.frozen(i === 0 ? 1 : 2) ? player.position.x : null);
       this.players.forEach((player, i) => {
         Body.applyForce(player, player.position, { x: 0, y: player.mass * (RULES.playerGravity - RULES.ballGravity) / RULES.stepMs ** 2 });
-        this.moveBoot(i, next[i].kickHeld || this.feet[i].tapTicks > 0);
+        this.moveBoot(i, !this.cannotKick(i === 0 ? 1 : 2) && (next[i].kickHeld || this.feet[i].tapTicks > 0));
       });
       this.limitBallSpeed();
       Engine.update(this.engine, RULES.stepMs / RULES.substeps);
+      this.players.forEach((player, i) => {
+        if (frozenX[i] === null) return;
+        Body.setPosition(player, { x: frozenX[i]!, y: player.position.y });
+        Body.setVelocity(player, { x: 0, y: player.velocity.y });
+      });
       this.limitBallSpeed();
       this.ballRotation = (this.ballRotation + this.ball.velocity.x / RULES.ballRadius / RULES.substeps) % (Math.PI * 2);
       this.stepBall();
     }
+    this.players.forEach((player, i) => {
+      const team: Team = i === 0 ? 1 : 2;
+      if (!this.effectFor(team, "speed")) return;
+      const speed = this.playerSpeed(team);
+      if (Math.abs(player.velocity.x) > speed) Body.setVelocity(player, {
+        x: Math.sign(player.velocity.x) * speed, y: player.velocity.y,
+      });
+    });
     this.feet.forEach(foot => { foot.tapTicks = Math.max(0, foot.tapTicks - 1); });
     const { x, y } = this.ball.position;
-    if (y > RULES.goalScoreY && (x < RULES.goalScoreX || x > 1024 - RULES.goalScoreX)) {
+    const scoringGoal: Team | null = x < RULES.goalScoreX ? 1 : x > 1024 - RULES.goalScoreX ? 2 : null;
+    if (scoringGoal && y > this.goalScoreY(scoringGoal)) {
       const scorer: Team = x < RULES.goalScoreX ? 2 : 1;
       this.score[scorer - 1]++;
       this.round++;
@@ -269,6 +429,11 @@ export class Simulation {
       } else if (!this.finished) {
         this.pause = RULES.goalPauseTicks;
       }
+      this.clearPowerupsAndEffects();
+    } else {
+      this.advanceEffects();
+      this.collectPowerups();
+      this.advancePowerups();
     }
     this.resolveTimedWinner();
   }
@@ -284,7 +449,8 @@ export class Simulation {
 
   private moveBoot(i: number, raised: boolean) {
     const team = i === 0 ? 1 : 2, foot = this.feet[i], boot = this.boots[i];
-    const rate = 1 / ((raised ? RULES.bootRaiseTicks : RULES.bootLowerTicks) * RULES.substeps);
+    const duration = this.playerScales[i] > 1 ? POWERUP_RULES.bigKickDuration : 1;
+    const rate = 1 / ((raised ? RULES.bootRaiseTicks : RULES.bootLowerTicks) * RULES.substeps * duration);
     foot.lift = Math.max(0, Math.min(1, foot.lift + (raised ? rate : -rate)));
     const target = bootPose(team, foot.lift).angle;
     const error = Number.isFinite(boot.angle)
@@ -297,7 +463,7 @@ export class Simulation {
 
   private rebuildBootPivots() {
     this.boots.forEach((boot, i) => {
-      const rest = bootPose(i === 0 ? 1 : 2, 0);
+      const rest = bootPose(i === 0 ? 1 : 2, 0, this.playerScales[i]);
       const delta = boot.angle - rest.angle;
       const offset = { x: -rest.x, y: -rest.y };
       const cos = Math.cos(delta), sin = Math.sin(delta);
@@ -338,11 +504,13 @@ export class Simulation {
         vx += impulse * nx; vy += impulse * ny;
       }
     };
-    this.boots.forEach(boot => {
+    this.boots.forEach((boot, i) => {
       const cos = Math.cos(boot.angle), sin = Math.sin(boot.angle);
       const dx = x - boot.position.x, dy = y - boot.position.y;
-      const hit = circleBox(dx * cos + dy * sin, -dx * sin + dy * cos, radius, RULES.bootWidth / 2, RULES.bootHeight / 2);
+      const hit = circleBox(dx * cos + dy * sin, -dx * sin + dy * cos, radius,
+        RULES.bootWidth * this.playerScales[i] / 2, RULES.bootHeight * this.playerScales[i] / 2);
       if (!hit) return;
+      this.lastTouch = i === 0 ? 1 : 2;
       const nx = hit.nx * cos - hit.ny * sin, ny = hit.nx * sin + hit.ny * cos;
       x += nx * (hit.depth + 0.000001); y += ny * (hit.depth + 0.000001);
       const point = { x: x - nx * radius, y: y - ny * radius };
@@ -363,18 +531,20 @@ export class Simulation {
     });
     this.players.forEach((player, i) => {
       const dx = x - player.position.x, dy = y - player.position.y;
-      const distance = Math.hypot(dx, dy), overlap = radius + RULES.playerRadius - distance;
+      const distance = Math.hypot(dx, dy), overlap = radius + RULES.playerRadius * this.playerScales[i] - distance;
       if (overlap <= 0) return;
+      this.lastTouch = i === 0 ? 1 : 2;
       // Coincidencia exacta: normal estable, sin división por cero.
       const nx = distance > 0 ? dx / distance : i === 0 ? 1 : -1;
       const ny = distance > 0 ? dy / distance : 0;
       contact(nx, ny, overlap, RULES.headRestitution, player.velocity.x, player.velocity.y);
     });
     // Las barras conservan su inclinación visual: círculo contra caja en su espacio local.
-    for (const [cx, angle] of [[RULES.goalWidth / 2, 0.05], [1024 - RULES.goalWidth / 2, -0.05]]) {
-      const cos = Math.cos(angle), sin = Math.sin(angle), dx = x - cx, dy = y - RULES.goalTop;
+    for (const [index, cx, angle] of [[0, RULES.goalWidth / 2, 0.05], [1, 1024 - RULES.goalWidth / 2, -0.05]]) {
+      const goalTop = this.goalTop(index === 0 ? 1 : 2);
+      const cos = Math.cos(angle), sin = Math.sin(angle), dx = x - cx, dy = y - goalTop;
       const localX = dx * cos + dy * sin;
-      const previousAbove = (previous.x - cx) * sin - (previous.y - RULES.goalTop) * cos >= 0;
+      const previousAbove = (previous.x - cx) * sin - (previous.y - goalTop) * cos >= 0;
       if (previousAbove && Math.abs(localX) <= RULES.goalWidth / 2) {
         // Una cabeza puede empujar la pelota más allá del centro de la barra
         // en este subpaso. Conservar la cara de entrada impide que la caja
@@ -427,7 +597,10 @@ export class Simulation {
       players: [body(this.players[0]), body(this.players[1])], ball: body(this.ball),
       inputs: [{ ...this.inputs[0] }, { ...this.inputs[1] }], kicks: [...this.kicks],
       feet: [{ ...this.feet[0] }, { ...this.feet[1] }], boots: [body(this.boots[0]), body(this.boots[1])],
-      ballRotation: this.ballRotation, ballRollMs: this.ballRollMs, roofSlide: [...this.roofSlide] };
+      ballRotation: this.ballRotation, ballRollMs: this.ballRollMs, roofSlide: [...this.roofSlide],
+      powerups: this.powerups.map(item => ({ ...item })), effects: this.effects.map(effect => ({ ...effect })),
+      lastTouch: this.lastTouch, spawnClock: this.spawnClock, nextPowerupId: this.nextPowerupId,
+      randomState: this.randomState, playerScales: [...this.playerScales] };
   }
 
   restore(state: Snapshot) {
@@ -445,6 +618,14 @@ export class Simulation {
     this.ballRotation = state.ballRotation;
     this.ballRollMs = state.ballRollMs;
     this.roofSlide = [...state.roofSlide];
+    this.powerups = state.powerups.map(item => ({ ...item }));
+    this.effects = state.effects.map(effect => ({ ...effect }));
+    this.lastTouch = state.lastTouch;
+    this.spawnClock = state.spawnClock;
+    this.nextPowerupId = state.nextPowerupId;
+    this.randomState = state.randomState;
+    this.players.forEach((_, i) => this.resizePlayer(i, state.playerScales[i]));
+    this.updateGoalRoofs();
     this.players.forEach((p, i) => body(p, state.players[i]));
     this.boots.forEach((boot, i) => body(boot, state.boots[i]));
     body(this.ball, state.ball);

@@ -3,8 +3,9 @@
 Referencias aportadas por el usuario: `Desktop 2026.09.13 - 13.57.43.01.mp4`
 (78,48 s) y `Desktop 2026.09.13 - 18.44.43.02.mp4` (51,37 s), ambas
 1920 x 1080 y 60 FPS. Juego: Sports Heads Football Championship.
-No se implementaron powerups. Las medidas de movimiento y salto aprobadas
-en la primera iteracion se conservan.
+Estos videos se usaron para ajustar la fisica base. Los powerups se agregaron
+despues con valores propios documentados en el [issue #6](https://github.com/Musta1ne/footyhead-hermanos/issues/6); las medidas de
+movimiento y salto base aprobadas en la primera iteracion se conservan.
 
 ## Datos originales consultados
 

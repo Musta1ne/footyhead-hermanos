@@ -1,4 +1,4 @@
-import { Scene } from "phaser";
+import Phaser, { Scene } from "phaser";
 import { PITCH_FLOOR_Y, REFERENCE_VISUALS, STADIUM_CORNERS, VISUALS } from "../visual-proportions";
 import type { MatchMode } from "../match-mode";
 
@@ -85,13 +85,19 @@ export function drawStadium(scene: Scene, mode: MatchMode) {
 
 export function drawGoal(scene: Scene, right: boolean) {
   const g = scene.add.graphics();
+  renderGoal(g, right, 1);
+  return g;
+}
+
+export function renderGoal(g: Phaser.GameObjects.Graphics, right: boolean, heightFactor: number) {
+  g.clear();
   const floor = PITCH_FLOOR_Y;
   const widthScale = VISUALS.goal.width / REFERENCE_VISUALS.goal.width;
-  const heightScale = VISUALS.goal.height / REFERENCE_VISUALS.goal.height;
+  const heightScale = VISUALS.goal.height * heightFactor / REFERENCE_VISUALS.goal.height;
   const gx = (value: number) => value * widthScale;
   const gy = (value: number) => floor - (REFERENCE_VISUALS.goal.height - value) * heightScale;
   const x = (value: number) => right ? 1024 - gx(value) : gx(value);
-  g.fillStyle(0xeaf0dd, 0.15).fillRect(right ? 1024 - VISUALS.goal.width : gx(4), gy(0), gx(76), VISUALS.goal.height);
+  g.fillStyle(0xeaf0dd, 0.15).fillRect(right ? 1024 - VISUALS.goal.width : gx(4), gy(0), gx(76), VISUALS.goal.height * heightFactor);
   g.lineStyle(widthScale, 0xf9f7e4, 0.9);
   for (let col = 8; col < 80; col += 12) g.lineBetween(x(col), gy(2), x(col), gy(124));
   for (let row = 13; row < 125; row += 15) g.lineBetween(x(5), gy(row), x(78), gy(row));

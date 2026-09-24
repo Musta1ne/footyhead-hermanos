@@ -8,6 +8,15 @@ Juego de fútbol arcade para dos personas en una sala privada. Cada sala reúne 
 Objeto con el que juegan ambos jugadores y que debe entrar en el arco rival para marcar un gol.
 _Evitar_: balón.
 
+**Powerup**:
+Objeto que aparece en la cancha y que la pelota recoge al tocarlo para activar un efecto de juego.
+
+**Último toque**:
+Jugador que tocó la pelota más recientemente y al que se atribuye un powerup recogido por ella.
+
+**Efecto de powerup**:
+Cambio temporal en un jugador o un arco provocado cuando la pelota recoge un powerup.
+
 **Sala**:
 Espacio privado y temporal con dos lugares: uno para el anfitrión y otro para el invitado. Una misma sala puede contener más de una partida si ambos aceptan una revancha.
 

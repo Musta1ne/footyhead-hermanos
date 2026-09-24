@@ -1,10 +1,11 @@
 import Phaser, { Scene } from "phaser";
 import { Peer } from "../peer";
-import { ARCADE_FONT, drawGoal, drawStadium } from "./stadium";
+import { ARCADE_FONT, drawGoal, drawStadium, renderGoal } from "./stadium";
 import { Simulation, RULES, emptyInput, isInput, type Input, type Snapshot } from "../simulation";
 import { controlKeyCode, getControlBindings, type ControlBindings } from "../control-bindings";
 import { VISUALS } from "../visual-proportions";
 import { isMatchMode, type MatchMode } from "../match-mode";
+import { POWERUP_DISPLAY, POWERUP_RULES, effectGroup, isPowerupType, seedFromRoom } from "../powerups";
 
 export class Game extends Scene {
   private pin = "";
@@ -16,6 +17,10 @@ export class Game extends Scene {
   private heads: Phaser.GameObjects.Image[];
   private boots: Phaser.GameObjects.Image[];
   private ball: Phaser.GameObjects.Image;
+  private goals: [Phaser.GameObjects.Graphics, Phaser.GameObjects.Graphics];
+  private drawnGoalScales: [number, number] = [1, 1];
+  private powerupSprites = new Map<number, { star: Phaser.GameObjects.Star; icon: Phaser.GameObjects.Text; label: Phaser.GameObjects.Text }>();
+  private effectBadges = new Map<string, Phaser.GameObjects.Text>();
   private scoreText: Phaser.GameObjects.Text;
   private cornerScores: Phaser.GameObjects.Text[];
   private goalText: Phaser.GameObjects.Text;
@@ -45,7 +50,10 @@ export class Game extends Scene {
   }
 
   create() {
-    this.sim = new Simulation(this.mode);
+    this.sim = new Simulation(this.mode, seedFromRoom(this.pin));
+    this.powerupSprites.clear();
+    this.effectBadges.clear();
+    this.drawnGoalScales = [1, 1];
     this.bindings = getControlBindings();
     this.keys = {
       left: this.input.keyboard!.addKey(controlKeyCode(this.bindings.left)!),
@@ -54,8 +62,7 @@ export class Game extends Scene {
       kick: this.input.keyboard!.addKey(controlKeyCode(this.bindings.kick)!),
     };
     drawStadium(this, this.mode);
-    drawGoal(this, false);
-    drawGoal(this, true);
+    this.goals = [drawGoal(this, false), drawGoal(this, true)];
     this.heads = [1, 2].map(team => this.add.image(0, 0, `sprite-${team}`).setDisplaySize(VISUALS.player.width, VISUALS.player.height).setFlipX(team === 2));
     this.boots = [1, 2].map(team => this.add.image(0, 0, `boot-${team}`).setDisplaySize(VISUALS.boot.width, VISUALS.boot.height));
     this.ball = this.add.image(512, RULES.serveY, "football").setDisplaySize(VISUALS.ball.width, VISUALS.ball.height);
@@ -129,7 +136,9 @@ export class Game extends Scene {
       if (newMatch) this.resetMatchControls();
       this.confirmedFinished = state.winner !== null;
       const old = [...this.sim.players, this.sim.ball].map(body => ({ ...body.position }));
-      const reset = newMatch || state.round !== this.confirmedRound || !this.started || (this.sim.pause > 0 && state.pause === 0);
+      const reset = newMatch || state.round !== this.confirmedRound || !this.started
+        || (this.sim.pause > 0 && state.pause === 0)
+        || state.playerScales.some((scale, i) => scale !== this.sim.playerScales[i]);
       if (state.round > this.confirmedRound) this.sound.play("die");
       this.confirmedRound = state.round; this.confirmedScore = [...state.score];
       // Volver al estado confirmado y repetir las teclas aún no recibidas por el anfitrión.
@@ -222,11 +231,19 @@ export class Game extends Scene {
 
   private renderBodies(delta: number) {
     const decay = Math.exp(-delta / 70);
+    this.goals.forEach((goal, i) => {
+      const scale = this.sim.goalScale(i === 0 ? 1 : 2);
+      if (scale !== this.drawnGoalScales[i]) {
+        renderGoal(goal, i === 1, scale);
+        this.drawnGoalScales[i] = scale;
+      }
+    });
     [...this.sim.players, this.sim.ball].forEach((body, i) => {
       this.corrections[i].x *= decay; this.corrections[i].y *= decay;
       const sprite = i === 2 ? this.ball : this.heads[i];
       sprite.setPosition(body.position.x + this.corrections[i].x, body.position.y + this.corrections[i].y);
       if (i === 2) sprite.setRotation(this.sim.ballRotation);
+      else sprite.setDisplaySize(VISUALS.player.width * this.sim.playerScales[i], VISUALS.player.height * this.sim.playerScales[i]);
     });
     this.boots.forEach((boot, i) => {
       // Matter resuelve dinamicamente la posicion y el giro del pie. El sprite
@@ -235,7 +252,58 @@ export class Game extends Scene {
       const body = this.sim.boots[i];
       boot.setPosition(body.position.x, body.position.y);
       boot.setRotation(body.angle);
+      boot.setDisplaySize(VISUALS.boot.width * this.sim.playerScales[i], VISUALS.boot.height * this.sim.playerScales[i]);
     });
+    this.renderPowerups();
+  }
+
+  private renderPowerups() {
+    const visibleIds = new Set(this.sim.powerups.map(item => item.id));
+    for (const [id, sprite] of this.powerupSprites) {
+      if (visibleIds.has(id)) continue;
+      sprite.star.destroy(); sprite.icon.destroy(); sprite.label.destroy();
+      this.powerupSprites.delete(id);
+    }
+    for (const item of this.sim.powerups) {
+      if (this.powerupSprites.has(item.id)) continue;
+      const display = POWERUP_DISPLAY[item.type];
+      const star = this.add.star(item.x, item.y, 14, 12, POWERUP_RULES.radius,
+        display.beneficial ? 0x328e37 : 0xb8312b).setStrokeStyle(2, 0xf5f2d9);
+      const icon = this.add.text(item.x, item.y, display.icon, { fontFamily: ARCADE_FONT, fontSize: 17,
+        color: "#fffbea", stroke: "#1d261b", strokeThickness: 3 }).setOrigin(0.5);
+      const label = this.add.text(item.x, item.y + 24, display.label, { fontFamily: ARCADE_FONT, fontSize: 11,
+        color: "#fffbea", backgroundColor: "#1b3028", padding: { x: 3, y: 1 } }).setOrigin(0.5, 0);
+      this.powerupSprites.set(item.id, { star, icon, label });
+    }
+    const active = new Set<string>();
+    const order = [0, 0];
+    for (const effect of this.sim.effects) {
+      const key = `${effect.target}:${effectGroup(effect.type)}`;
+      active.add(key);
+      const display = POWERUP_DISPLAY[effect.type];
+      const activeColor = (display.activeHarmful ?? !display.beneficial) ? "#a02b27" : "#287537";
+      let badge = this.effectBadges.get(key);
+      if (!badge) {
+        badge = this.add.text(0, 0, "", { fontFamily: ARCADE_FONT, fontSize: 13,
+          color: "#fffbea", backgroundColor: activeColor,
+          padding: { x: 5, y: 3 } }).setOrigin(0.5);
+        this.effectBadges.set(key, badge);
+      }
+      badge.setBackgroundColor(activeColor);
+      const i = effect.target - 1;
+      const slot = order[i]++;
+      const isGoal = effectGroup(effect.type) === "goal";
+      const x = isGoal ? (i === 0 ? RULES.goalWidth / 2 : 1024 - RULES.goalWidth / 2)
+        : this.sim.players[i].position.x;
+      const y = isGoal ? this.sim.goalTop(effect.target) - 28 - slot * 24
+        : this.sim.players[i].position.y - RULES.playerRadius * this.sim.playerScales[i] - 22 - slot * 24;
+      badge.setText(`${display.icon} ${display.activeLabel ?? display.label} ${Math.ceil(effect.remainingTicks / 60)}s`);
+      badge.setPosition(Math.max(70, Math.min(954, x)), Math.max(46, y));
+    }
+    for (const [key, badge] of this.effectBadges) {
+      if (active.has(key)) continue;
+      badge.destroy(); this.effectBadges.delete(key);
+    }
   }
 }
 
@@ -247,6 +315,13 @@ function isSnapshot(value: unknown): value is Snapshot {
   const foot = (f: Snapshot["feet"][number]) => !!f && Number.isFinite(f.lift) && f.lift >= 0 && f.lift <= 1
     && Number.isSafeInteger(f.tapTicks) && f.tapTicks >= 0 && f.tapTicks <= RULES.bootTapTicks;
   const boots = (v as Snapshot).boots;
+  const powerup = (item: Snapshot["powerups"][number]) => !!item && isPowerupType(item.type)
+    && Number.isSafeInteger(item.id) && item.id > 0 && Number.isFinite(item.x) && item.x >= 0 && item.x <= 1024
+    && Number.isFinite(item.y) && item.y >= 0 && item.y <= 590
+    && Number.isSafeInteger(item.remainingTicks) && item.remainingTicks > 0 && item.remainingTicks <= POWERUP_RULES.lifeTicks;
+  const effect = (item: Snapshot["effects"][number]) => !!item && isPowerupType(item.type)
+    && (item.target === 1 || item.target === 2) && Number.isSafeInteger(item.remainingTicks)
+    && item.remainingTicks > 0 && item.remainingTicks <= POWERUP_RULES.effectTicks;
   return Number.isSafeInteger(v.tick) && v.tick >= 0 && Number.isSafeInteger(v.round) && Number.isSafeInteger(v.pause)
     && Number.isSafeInteger(v.match) && v.match >= 0
     && isMatchMode(v.mode) && (v.winner === null || v.winner === 1 || v.winner === 2)
@@ -258,5 +333,13 @@ function isSnapshot(value: unknown): value is Snapshot {
     && Array.isArray(v.feet) && v.feet.length === 2 && v.feet.every(foot)
     && Array.isArray(boots) && boots.length === 2 && boots.every(body)
     && Array.isArray(v.inputs) && v.inputs.length === 2 && v.inputs.every(isInput)
-    && Array.isArray(v.players) && v.players.length === 2 && v.players.every(body) && body(v.ball);
+    && Array.isArray(v.players) && v.players.length === 2 && v.players.every(body) && body(v.ball)
+    && Array.isArray(v.powerups) && v.powerups.length <= POWERUP_RULES.maxVisible && v.powerups.every(powerup)
+    && Array.isArray(v.effects) && v.effects.length <= 12 && v.effects.every(effect)
+    && (v.lastTouch === null || v.lastTouch === 1 || v.lastTouch === 2)
+    && Number.isSafeInteger(v.spawnClock) && v.spawnClock >= 0 && v.spawnClock < POWERUP_RULES.spawnTicks
+    && Number.isSafeInteger(v.nextPowerupId) && v.nextPowerupId > 0
+    && Number.isSafeInteger(v.randomState) && v.randomState > 0 && v.randomState <= 0xffffffff
+    && Array.isArray(v.playerScales) && v.playerScales.length === 2
+    && v.playerScales.every(scale => scale === 1 || scale === POWERUP_RULES.grow || scale === POWERUP_RULES.shrink);
 }

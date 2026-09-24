@@ -5,6 +5,7 @@
 | Archivo | Qué cambiar ahí |
 | --- | --- |
 | `client/src/game/simulation.ts` | Reglas, velocidades, tamaño del campo, salto, patadas y goles. `RULES` agrupa las constantes de jugabilidad. |
+| `client/src/game/powerups.ts` | Tipos de powerup, magnitudes ajustables, nombres visibles y semilla reproducible de cada sala. |
 | `client/src/game/visual-proportions.ts` | Escala compartida de jugadores, botas, pelota y arcos respecto de la referencia de 800 px. |
 | `client/src/game/scenes/Game.ts` | Flechas/Espacio, dibujo de los personajes, marcador, predicción y correcciones del invitado. |
 | `client/src/game/scenes/stadium.ts` | Tribunas, césped, arcos y decoración arcade; no modifica la física. |
@@ -25,6 +26,8 @@
 3. Cada dos pasos manda un estado completo. El canal no reintenta estados viejos: uno nuevo reemplaza al anterior.
 4. El invitado también simula inmediatamente. Al recibir un estado, restaura la física y vuelve a ejecutar las entradas que el anfitrión todavía no confirmó.
 5. Los sprites suavizan las correcciones pequeñas. El marcador mostrado por el invitado siempre viene del anfitrión.
+
+La simulación también conserva en cada estado los powerups visibles, sus efectos, el último toque, los relojes y la secuencia aleatoria. Así el anfitrión y la predicción del invitado resuelven la misma recolección; los valores ajustables están en `powerups.ts`.
 
 Cada entrada tiene `seq`. Se ignoran entradas y estados anteriores a los ya recibidos. Los contadores de salto/patada sobreviven a un paquete perdido y evitan repetir la acción cuando llega el siguiente.
 
